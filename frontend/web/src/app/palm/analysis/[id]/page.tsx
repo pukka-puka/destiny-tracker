@@ -1,264 +1,397 @@
+// src/app/palm/analysis/[id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { 
-  Loader2, 
+  Sparkles, 
   Heart, 
-  Coins, 
   Briefcase, 
-  Activity, 
-  Users, 
-  TrendingUp,
-  Star
+  TrendingUp, 
+  Users,
+  Star,
+  ChevronRight,
+  Loader2,
+  AlertCircle,
+  ArrowLeft,
+  Share2,
+  Download
 } from 'lucide-react';
-import Image from 'next/image';
 
-// モックの手相解析結果
-const mockAnalysis = {
-  lines: {
-    life: {
-      strength: 85,
-      description: '生命線は長く深く、健康で活力に満ちた人生を示しています。'
-    },
-    heart: {
-      strength: 72,
-      description: '感情線は安定しており、豊かな感情表現と愛情深さを表しています。'
-    },
-    head: {
-      strength: 90,
-      description: '頭脳線は明瞭で、論理的思考と創造性のバランスが取れています。'
-    },
-    fate: {
-      strength: 68,
-      description: '運命線は中程度の強さで、自由な選択と運命のバランスを示しています。'
-    }
-  },
-  parameters: {
-    love: 75,
-    money: 82,
-    work: 88,
-    health: 79,
-    social: 71,
-    overall: 80
-  },
-  personality: {
-    traits: ['創造的', 'リーダーシップ', '直感的', '情熱的'],
-    summary: 'あなたは創造性とリーダーシップを兼ね備えた、バランスの取れた人物です。'
-  },
-  advice: '現在のあなたの手相は、大きな可能性を秘めています。特に仕事運が高まっており、新しいチャレンジに適した時期です。'
-};
+interface PalmReading {
+  id: string;
+  userId: string;
+  imageUrl: string;
+  status: 'pending' | 'analyzing' | 'completed' | 'error';
+  analysis?: {
+    lifeLine: {
+      score: number;
+      description: string;
+    };
+    heartLine: {
+      score: number;
+      description: string;
+    };
+    headLine: {
+      score: number;
+      description: string;
+    };
+    fateLine: {
+      score: number;
+      description: string;
+    };
+    overall: {
+      fortune: number;
+      message: string;
+      advice: string;
+    };
+  };
+  createdAt: any;
+}
 
-// パラメーターアイコンマップ
-const parameterIcons = {
-  love: Heart,
-  money: Coins,
-  work: Briefcase,
-  health: Activity,
-  social: Users,
-  overall: TrendingUp
-};
-
-// パラメーター日本語名
-const parameterNames = {
-  love: '恋愛運',
-  money: '金運',
-  work: '仕事運',
-  health: '健康運',
-  social: '対人運',
-  overall: '総合運'
-};
+// ダミーの解析結果生成（実際はAI APIを使用）
+const generateDummyAnalysis = () => ({
+  lifeLine: {
+    score: Math.floor(Math.random() * 30) + 70,
+    description: "生命線がはっきりと刻まれており、健康運に恵まれています。長寿の相が表れており、活力に満ちた人生を送ることができるでしょう。"
+  },
+  heartLine: {
+    score: Math.floor(Math.random() * 30) + 70,
+    description: "感情豊かで愛情深い性格が表れています。人との繋がりを大切にし、温かい人間関係を築くことができるでしょう。"
+  },
+  headLine: {
+    score: Math.floor(Math.random() * 30) + 70,
+    description: "知的で論理的な思考力を持っています。決断力があり、困難な状況でも冷静に対処できる能力があります。"
+  },
+  fateLine: {
+    score: Math.floor(Math.random() * 30) + 70,
+    description: "運命線が強く表れており、目標に向かって着実に進む力があります。努力が報われやすい運勢です。"
+  },
+  overall: {
+    fortune: Math.floor(Math.random() * 30) + 70,
+    message: "全体的にバランスの取れた良い手相です。特に今年は大きなチャンスが訪れる暗示があります。",
+    advice: "自信を持って新しいことにチャレンジしてみましょう。あなたの努力は必ず実を結びます。"
+  }
+});
 
 export default function PalmAnalysisPage() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
-  interface PalmData {
-    imageUrl?: string;
-    imagePath?: string;
-    status?: string;
-    userId?: string;
-  }
-  
-  const [palmData, setPalmData] = useState<PalmData | null>(null);
+  const [reading, setReading] = useState<PalmReading | null>(null);
   const [loading, setLoading] = useState(true);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
-    const fetchPalmData = async () => {
-      if (!user || !params.id) return;
+    if (params.id) {
+      fetchReading(params.id as string);
+    }
+  }, [params.id]);
 
-      try {
-        const docRef = doc(db, 'palm-readings', params.id as string);
-        const docSnap = await getDoc(docRef);
+  const fetchReading = async (id: string) => {
+    try {
+      const docRef = doc(db, 'palm-readings', id);
+      const docSnap = await getDoc(docRef);
 
-        if (docSnap.exists()) {
-          setPalmData(docSnap.data());
-          
-          // モック解析プログレス
-          const interval = setInterval(() => {
-            setAnalysisProgress(prev => {
-              if (prev >= 100) {
-                clearInterval(interval);
-                setTimeout(() => setLoading(false), 500);
-                return 100;
-              }
-              return prev + 20;
-            });
-          }, 500);
-        } else {
-          router.push('/palm');
-        }
-      } catch (error) {
-        console.error('Error fetching palm data:', error);
-        router.push('/palm');
+      if (!docSnap.exists()) {
+        setError('占い結果が見つかりません');
+        setLoading(false);
+        return;
       }
-    };
 
-    fetchPalmData();
-  }, [user, params.id, router]);
+      const data = docSnap.data() as Omit<PalmReading, 'id'>;
+      const readingData: PalmReading = {
+        id: docSnap.id,
+        ...data
+      };
+
+      // 権限チェック
+      if (user && data.userId !== user.uid) {
+        setError('この占い結果を表示する権限がありません');
+        setLoading(false);
+        return;
+      }
+
+      setReading(readingData);
+
+      // 解析がまだの場合は実行
+      if (data.status === 'pending') {
+        await startAnalysis(id);
+      }
+    } catch (err) {
+      console.error('Error fetching reading:', err);
+      setError('データの取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startAnalysis = async (id: string) => {
+    setAnalyzing(true);
+    try {
+      // ステータスを更新
+      const docRef = doc(db, 'palm-readings', id);
+      await updateDoc(docRef, {
+        status: 'analyzing',
+        updatedAt: new Date()
+      });
+
+      // ダミーの解析（実際はAI APIを呼び出し）
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      const analysis = generateDummyAnalysis();
+
+      // 解析結果を保存
+      await updateDoc(docRef, {
+        status: 'completed',
+        analysis,
+        updatedAt: new Date()
+      });
+
+      // 状態を更新
+      setReading(prev => prev ? {
+        ...prev,
+        status: 'completed',
+        analysis
+      } : null);
+    } catch (err) {
+      console.error('Error analyzing:', err);
+      setError('解析に失敗しました');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-purple-600 mx-auto mb-4" />
-          <p className="text-lg font-semibold text-gray-700">手相を解析中...</p>
-          <div className="mt-4 w-64 bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-purple-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${analysisProgress}%` }}
-            />
-          </div>
-          <p className="text-sm text-gray-500 mt-2">{analysisProgress}%</p>
+          <p className="text-gray-600">読み込み中...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">
-          🔮 手相解析結果
-        </h1>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 手相画像 */}
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">アップロード画像</h2>
-            {palmData?.imageUrl && (
-              <div className="relative w-full aspect-square">
-                <Image 
-                  src={palmData.imageUrl} 
-                  alt="手相" 
-                  fill
-                  className="rounded-lg object-contain"
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 運勢パラメーター */}
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">運勢パラメーター</h2>
-            <div className="space-y-4">
-              {Object.entries(mockAnalysis.parameters).map(([key, value]) => {
-                const Icon = parameterIcons[key as keyof typeof parameterIcons];
-                return (
-                  <div key={key} className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${key === 'love' ? 'text-pink-500' : key === 'money' ? 'text-yellow-500' : 'text-purple-500'}`} />
-                    <span className="text-sm font-medium text-gray-600 w-16">
-                      {parameterNames[key as keyof typeof parameterNames]}
-                    </span>
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full transition-all duration-500 ${
-                          key === 'love' ? 'bg-pink-500' : 
-                          key === 'money' ? 'bg-yellow-500' : 
-                          'bg-purple-500'
-                        }`}
-                        style={{ width: `${value}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700 w-12 text-right">
-                      {value}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 手相線の分析 */}
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">主要線の分析</h2>
-            <div className="space-y-4">
-              {Object.entries(mockAnalysis.lines).map(([line, data]) => (
-                <div key={line} className="border-b border-gray-100 pb-3 last:border-0">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium text-gray-700 capitalize">
-                      {line === 'life' ? '生命線' : 
-                       line === 'heart' ? '感情線' : 
-                       line === 'head' ? '頭脳線' : '運命線'}
-                    </span>
-                    <span className="text-sm text-purple-600 font-semibold">
-                      強度: {data.strength}%
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{data.description}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 性格特性 */}
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800">性格特性</h2>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {mockAnalysis.personality.traits.map(trait => (
-                <span 
-                  key={trait}
-                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium"
-                >
-                  {trait}
-                </span>
-              ))}
-            </div>
-            <p className="text-gray-600">{mockAnalysis.personality.summary}</p>
-          </div>
-        </div>
-
-        {/* アドバイス */}
-        <div className="mt-6 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-xl p-6 text-white">
-          <div className="flex items-start gap-3">
-            <Star className="w-6 h-6 flex-shrink-0 mt-1" />
-            <div>
-              <h2 className="text-xl font-semibold mb-2">今日のアドバイス</h2>
-              <p className="text-purple-50">{mockAnalysis.advice}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* アクションボタン */}
-        <div className="mt-8 flex gap-4 justify-center">
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-center text-gray-700 mb-4">{error}</p>
           <button
             onClick={() => router.push('/palm')}
-            className="px-6 py-3 bg-white text-purple-600 rounded-lg hover:bg-gray-50 transition-colors shadow-lg"
+            className="w-full py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
           >
-            新しい手相を撮影
-          </button>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-lg"
-          >
-            ダッシュボードへ
+            戻る
           </button>
         </div>
+      </div>
+    );
+  }
+
+  if (analyzing || reading?.status === 'analyzing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="relative">
+            <Sparkles className="w-16 h-16 text-purple-600 animate-pulse mx-auto" />
+            <div className="absolute inset-0 animate-ping">
+              <Sparkles className="w-16 h-16 text-purple-400 mx-auto opacity-50" />
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mt-6 mb-2">
+            手相を解析中...
+          </h2>
+          <p className="text-gray-600">
+            AIがあなたの運命を読み解いています
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const analysis = reading?.analysis;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between mb-6">
+          <button
+            onClick={() => router.push('/palm')}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>戻る</span>
+          </button>
+          <div className="flex gap-2">
+            <button className="p-2 text-gray-600 hover:text-gray-900">
+              <Share2 className="w-5 h-5" />
+            </button>
+            <button className="p-2 text-gray-600 hover:text-gray-900">
+              <Download className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* タイトル */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
+            <h1 className="text-3xl font-bold text-gray-800 mx-3">
+              あなたの手相占い結果
+            </h1>
+            <Star className="w-6 h-6 text-yellow-400 fill-yellow-400" />
+          </div>
+          <p className="text-gray-600">
+            {new Date(reading?.createdAt?.toDate()).toLocaleDateString('ja-JP')}
+          </p>
+        </div>
+
+        {analysis && (
+          <>
+            {/* 総合運勢 */}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-6 text-white mb-8">
+              <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <Sparkles className="w-6 h-6" />
+                総合運勢
+              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-3xl font-bold">
+                  {analysis.overall.fortune}点
+                </span>
+                <div className="flex gap-1">
+                  {[...Array(5)].map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`w-6 h-6 ${
+                        i < Math.floor(analysis.overall.fortune / 20)
+                          ? 'fill-yellow-400 text-yellow-400'
+                          : 'text-white/30'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <p className="mb-3">{analysis.overall.message}</p>
+              <p className="text-sm opacity-90">
+                💡 {analysis.overall.advice}
+              </p>
+            </div>
+
+            {/* 各線の詳細 */}
+            <div className="grid md:grid-cols-2 gap-4 mb-8">
+              {/* 生命線 */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-red-500" />
+                    生命線
+                  </h3>
+                  <span className="text-2xl font-bold text-red-500">
+                    {analysis.lifeLine.score}点
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                  <div
+                    className="bg-red-500 h-2 rounded-full"
+                    style={{ width: `${analysis.lifeLine.score}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600">
+                  {analysis.lifeLine.description}
+                </p>
+              </div>
+
+              {/* 感情線 */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <Heart className="w-5 h-5 text-pink-500" />
+                    感情線
+                  </h3>
+                  <span className="text-2xl font-bold text-pink-500">
+                    {analysis.heartLine.score}点
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                  <div
+                    className="bg-pink-500 h-2 rounded-full"
+                    style={{ width: `${analysis.heartLine.score}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600">
+                  {analysis.heartLine.description}
+                </p>
+              </div>
+
+              {/* 頭脳線 */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-blue-500" />
+                    頭脳線
+                  </h3>
+                  <span className="text-2xl font-bold text-blue-500">
+                    {analysis.headLine.score}点
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full"
+                    style={{ width: `${analysis.headLine.score}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600">
+                  {analysis.headLine.description}
+                </p>
+              </div>
+
+              {/* 運命線 */}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-purple-500" />
+                    運命線
+                  </h3>
+                  <span className="text-2xl font-bold text-purple-500">
+                    {analysis.fateLine.score}点
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                  <div
+                    className="bg-purple-500 h-2 rounded-full"
+                    style={{ width: `${analysis.fateLine.score}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-600">
+                  {analysis.fateLine.description}
+                </p>
+              </div>
+            </div>
+
+            {/* アクションボタン */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={() => router.push('/tarot')}
+                className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all flex items-center justify-center gap-2"
+              >
+                <span>タロット占いも試す</span>
+                <ChevronRight className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => router.push('/palm')}
+                className="flex-1 py-3 border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 transition-all"
+              >
+                もう一度占う
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
