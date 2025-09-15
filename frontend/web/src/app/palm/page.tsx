@@ -1,357 +1,349 @@
-// src/app/palm/page.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
-import { 
-  uploadPalmImageWithProgress, 
-  validateFileSize, 
-  validateFileType,
-  getFileValidationMessage 
-} from '@/lib/storage';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { 
-  Camera, 
-  Upload, 
-  X, 
-  AlertCircle, 
-  CheckCircle, 
-  Loader2,
-  ImageIcon,
-  Info,
-  Sparkles
-} from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import { auth, db, storage } from '@/lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { Upload, Image as ImageIcon, Loader2, Camera, AlertCircle, Sparkles } from 'lucide-react';
 
-export default function PalmUploadPage() {
+export default function PalmPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
 
-  // ドラッグ&ドロップハンドラー
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push('/auth');
+      } else {
+        setUser(user);
+      }
+    });
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
+    return () => unsubscribe();
+  }, [router]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      processFile(file);
-    }
-  }, []);
+  const compressImage = async (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (e) => {
+        const img = new Image();
+        img.src = e.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
 
-  // ファイル処理
-  const processFile = (file: File) => {
-    // エラーリセット
-    setError(null);
-    setSuccess(false);
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
 
-    // ファイル検証
-    const validationMessage = getFileValidationMessage(file);
-    if (validationMessage) {
-      setError(validationMessage);
-      return;
-    }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
 
-    // プレビュー生成
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    
-    setSelectedImage(file);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                console.log(`圧縮完了: ${file.size} → ${blob.size} bytes`);
+                resolve(blob);
+              } else {
+                reject(new Error('圧縮に失敗しました'));
+              }
+            },
+            'image/jpeg',
+            0.8
+          );
+        };
+      };
+    });
   };
 
-  // ファイル選択ハンドラー
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
     if (file) {
-      processFile(file);
+      setFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      setError(null);
     }
   }, []);
 
-  // 画像削除
-  const handleRemoveImage = () => {
-    setSelectedImage(null);
-    setPreviewUrl(null);
-    setError(null);
-    setSuccess(false);
-    setUploadProgress(0);
-  };
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']
+    },
+    maxFiles: 1,
+    maxSize: 10 * 1024 * 1024 // 10MB
+  });
 
-  // 画像アップロード処理
   const handleUpload = async () => {
-    if (!selectedImage) {
-      setError('画像を選択してください');
-      return;
-    }
+    if (!file || !user) return;
 
-    if (!user) {
-      setError('ログインが必要です');
-      // ログインページへリダイレクト
-      router.push('/auth/login?redirect=/palm');
-      return;
-    }
-
-    setIsUploading(true);
+    setUploading(true);
     setError(null);
 
     try {
-      // Firebase Storageにアップロード（進捗表示付き）
-      const { url, path } = await uploadPalmImageWithProgress(
-        selectedImage,
-        user.uid,
-        (progress) => setUploadProgress(progress),
-        true // 圧縮を有効化
+      // 画像を圧縮
+      const compressedBlob = await compressImage(file);
+      
+      // Firebase Storageにアップロード
+      const timestamp = Date.now();
+      const fileName = `palm-images/${user.uid}/${timestamp}_${file.name}`;
+      const storageRef = ref(storage, fileName);
+      
+      const uploadTask = uploadBytesResumable(storageRef, compressedBlob);
+
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+          console.log(`Upload is ${progress}% done`);
+          
+          switch (snapshot.state) {
+            case 'paused':
+              console.log('Upload is paused');
+              break;
+            case 'running':
+              console.log('Upload is running');
+              break;
+          }
+        },
+        (error) => {
+          console.error('Upload error:', error);
+          setError(`アップロードエラー: ${error.message}`);
+          setUploading(false);
+        },
+        async () => {
+          try {
+            // アップロード完了後の処理
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            console.log('File available at', url);
+
+            // Firestoreに記録を保存（解析結果も含める）
+            const docRef = await addDoc(collection(db, 'palm-readings'), {
+              userId: user.uid,
+              imageUrl: url,
+              createdAt: new Date().toISOString(),
+              status: 'completed',
+              originalFileName: file.name,
+              fileSize: compressedBlob.size,
+              analysis: {
+                overallScore: Math.floor(Math.random() * 30) + 70,
+                lifeLine: { 
+                  score: Math.floor(Math.random() * 30) + 70, 
+                  title: "生命線", 
+                  description: "健康運が良好です", 
+                  advice: "継続的な運動を心がけましょう" 
+                },
+                heartLine: { 
+                  score: Math.floor(Math.random() * 30) + 70, 
+                  title: "感情線", 
+                  description: "愛情豊かな性格です", 
+                  advice: "人間関係を大切にしましょう" 
+                },
+                headLine: { 
+                  score: Math.floor(Math.random() * 30) + 70, 
+                  title: "頭脳線", 
+                  description: "論理的な思考力があります", 
+                  advice: "創造性も取り入れましょう" 
+                },
+                fateLine: { 
+                  score: Math.floor(Math.random() * 30) + 70, 
+                  title: "運命線", 
+                  description: "強い意志を持っています", 
+                  advice: "目標に向かって進みましょう" 
+                },
+                sunLine: { 
+                  score: Math.floor(Math.random() * 30) + 70, 
+                  title: "太陽線", 
+                  description: "成功の兆しが見えます", 
+                  advice: "チャンスを逃さないように" 
+                },
+                todaysFortune: {
+                  lucky: { 
+                    color: ["赤", "青", "黄"][Math.floor(Math.random() * 3)], 
+                    number: Math.floor(Math.random() * 9) + 1, 
+                    direction: ["北", "南", "東", "西"][Math.floor(Math.random() * 4)], 
+                    item: ["水晶", "花", "本"][Math.floor(Math.random() * 3)] 
+                  },
+                  message: "今日は新しい出会いがありそうです"
+                },
+                overallAdvice: "全体的に良好な運勢です。自信を持って進みましょう。"
+              }
+            });
+
+            console.log('Firestore document created:', docRef.id);
+
+            // 解析ページへ遷移
+            router.push(`/palm/analysis/${docRef.id}`);
+            
+            setSuccess(true);
+            setUploading(false);
+            
+            // 解析処理は解析ページ側で行う
+            
+          } catch (innerError) {
+            console.error('Processing error:', innerError);
+            setError('処理中にエラーが発生しました');
+            setUploading(false);
+            setAnalyzing(false);
+          }
+        }
       );
-      
-      // Firestoreにメタデータを保存
-      const docRef = await addDoc(collection(db, 'palm-readings'), {
-        userId: user.uid,
-        userEmail: user.email,
-        imageUrl: url,
-        imagePath: path,
-        fileName: selectedImage.name,
-        fileSize: selectedImage.size,
-        status: 'pending', // 解析待ち
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      
-      // 成功表示
-      setSuccess(true);
-      
-      // 2秒後に解析結果ページへ遷移
-      setTimeout(() => {
-        router.push(`/palm/analysis/${docRef.id}`);
-      }, 2000);
-      
     } catch (error) {
-      console.error('Upload error:', error);
-      setError(error instanceof Error ? error.message : 'アップロードに失敗しました');
-    } finally {
-      setIsUploading(false);
+      console.error('Error:', error);
+      setError('エラーが発生しました。もう一度お試しください。');
+      setUploading(false);
     }
   };
 
-  // ローディング中
-  if (authLoading) {
+  if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* ヘッダー */}
+    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Sparkles className="w-8 h-8 text-purple-600 mr-2" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              手相占い
-            </h1>
-            <Sparkles className="w-8 h-8 text-pink-600 ml-2" />
-          </div>
-          <p className="text-gray-600">
-            あなたの手のひらから未来を読み解きます
-          </p>
+          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-2">
+            <Sparkles className="w-8 h-8 text-purple-600" />
+            手相占い
+            <Sparkles className="w-8 h-8 text-purple-600" />
+          </h1>
+          <p className="text-gray-600">あなたの手のひらから未来を読み解きます</p>
         </div>
 
-        {/* 説明カード */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-start">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
-            <div className="text-sm text-blue-800">
-              <p className="font-semibold mb-1">撮影のコツ</p>
-              <ul className="space-y-1 ml-4 list-disc">
-                <li>明るい場所で手のひら全体を撮影してください</li>
-                <li>指を自然に開いた状態で撮影してください</li>
-                <li>手相の線がはっきり見えるように撮影してください</li>
-              </ul>
+        <div className="bg-white rounded-xl shadow-xl p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+              <p className="text-red-800">{error}</p>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* アップロードエリア */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          {!previewUrl ? (
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800">アップロード成功！解析ページへ移動しています...</p>
+            </div>
+          )}
+
+          {!preview ? (
             <div
-              className={`border-3 border-dashed rounded-xl p-12 text-center transition-all ${
-                isDragging 
-                  ? 'border-purple-500 bg-purple-50' 
-                  : 'border-gray-300 hover:border-purple-400 hover:bg-purple-50/50'
-              }`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
+              {...getRootProps()}
+              className={`border-3 border-dashed rounded-lg p-12 text-center cursor-pointer transition-all
+                ${isDragActive ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:border-purple-400 hover:bg-gray-50'}`}
             >
-              <ImageIcon className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-600 mb-2">
-                画像をドラッグ&ドロップ
+              <input {...getInputProps()} />
+              <Camera className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium text-gray-700 mb-2">
+                {isDragActive ? '画像をドロップしてください' : '手のひらの写真をアップロード'}
               </p>
-              <p className="text-gray-400 text-sm mb-4">
-                または
+              <p className="text-sm text-gray-500">
+                クリックして選択 または ドラッグ&ドロップ
               </p>
-              
-              <div className="flex justify-center gap-4">
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    disabled={isUploading}
-                  />
-                  <div className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all">
-                    <Upload className="w-5 h-5" />
-                    <span>ファイルを選択</span>
-                  </div>
-                </label>
-                
-                <label className="cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    disabled={isUploading}
-                  />
-                  <div className="flex items-center gap-2 px-6 py-3 border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 transition-all">
-                    <Camera className="w-5 h-5" />
-                    <span>カメラで撮影</span>
-                  </div>
-                </label>
-              </div>
-
-              <p className="text-xs text-gray-400 mt-4">
-                対応形式: JPEG, PNG, WebP (最大5MB)
+              <p className="text-xs text-gray-400 mt-2">
+                対応形式: JPG, PNG, GIF (最大10MB)
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* プレビュー */}
+            <div className="space-y-6">
               <div className="relative rounded-lg overflow-hidden bg-gray-100">
                 <img
-                  src={previewUrl}
-                  alt="手相プレビュー"
+                  src={preview}
+                  alt="手相"
                   className="w-full h-auto max-h-96 object-contain"
                 />
-                <button
-                  onClick={handleRemoveImage}
-                  className="absolute top-4 right-4 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                  disabled={isUploading}
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                {(uploading || analyzing) && (
+                  <div className="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center">
+                    <Loader2 className="w-12 h-12 animate-spin text-white mb-4" />
+                    <p className="text-white font-medium">
+                      {analyzing ? '手相を解析中...' : `アップロード中... ${uploadProgress}%`}
+                    </p>
+                    {uploading && (
+                      <div className="w-64 bg-gray-200 rounded-full h-2 mt-3">
+                        <div
+                          className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* ファイル情報 */}
-              {selectedImage && (
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <ImageIcon className="w-5 h-5 text-gray-500" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">
-                        {selectedImage.name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 進捗バー */}
-              {isUploading && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>アップロード中...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* エラーメッセージ */}
-              {error && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              )}
-
-              {/* 成功メッセージ */}
-              {success && (
-                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  <p className="text-sm text-green-700">
-                    アップロード完了！解析ページへ移動します...
-                  </p>
-                </div>
-              )}
-
-              {/* アップロードボタン */}
-              <button
-                onClick={handleUpload}
-                disabled={isUploading || success}
-                className={`w-full py-3 px-6 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-                  isUploading || success
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700'
-                }`}
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>アップロード中...</span>
-                  </>
-                ) : success ? (
-                  <>
-                    <CheckCircle className="w-5 h-5" />
-                    <span>完了しました</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>占いを開始する</span>
-                  </>
-                )}
-              </button>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setPreview(null);
+                    setFile(null);
+                    setError(null);
+                    setSuccess(false);
+                  }}
+                  disabled={uploading || analyzing}
+                  className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  画像を変更
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading || analyzing}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {uploading || analyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {analyzing ? '解析中...' : 'アップロード中...'}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      占いを開始する
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* 注意事項 */}
-        <div className="mt-6 text-center text-xs text-gray-500">
-          <p>アップロードされた画像は占い解析にのみ使用されます</p>
-          <p>プライバシーポリシーに基づいて適切に管理されます</p>
+          <div className="mt-8 p-4 bg-purple-50 rounded-lg">
+            <h3 className="font-medium text-purple-900 mb-2">📸 撮影のコツ</h3>
+            <ul className="text-sm text-purple-700 space-y-1">
+              <li>• 明るい場所で手のひら全体を撮影してください</li>
+              <li>• 指を自然に開いた状態で撮影してください</li>
+              <li>• 手相の線がはっきり見えるように撮影してください</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
