@@ -1,211 +1,181 @@
-// src/app/page.tsx
+// frontend/web/src/app/page.tsx
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { 
-  Sparkles, 
-  Camera, 
-  Moon, 
-  MessageCircle, 
-  TrendingUp,
-  ArrowRight,
-  Star,
-  Users,
-  Shield,
-  Zap
-} from 'lucide-react';
+import Link from 'next/link';
+import { Sparkles, Star, Moon, Sun, Heart } from 'lucide-react';
 
 export default function HomePage() {
-  const router = useRouter();
-
   const features = [
     {
-      icon: Camera,
       title: '手相占い',
-      description: 'AIが手のひらから運命を読み解きます',
-      path: '/palm',
-      color: 'from-purple-500 to-pink-500'
+      description: 'AI画像解析で読み解く運命の線',
+      icon: '🤚',
+      href: '/palm',
+      gradient: 'from-purple-500 to-pink-500',
+      color: 'bg-purple-500' // colorプロパティを追加
     },
     {
-      icon: Moon,
       title: 'タロット占い',
-      description: '神秘的なカードがあなたの未来を示します',
-      path: '/tarot',
-      color: 'from-blue-500 to-purple-500'
+      description: '78枚のカードが導く神秘のメッセージ',
+      icon: '🎴',
+      href: '/tarot',
+      gradient: 'from-indigo-500 to-purple-500',
+      color: 'bg-indigo-500' // colorプロパティを追加
     },
     {
-      icon: MessageCircle,
-      title: 'AI占い師チャット',
+      title: 'AIチャット相談',
       description: '24時間いつでも相談できるAI占い師',
-      path: '/chat',
-      color: 'from-green-500 to-blue-500'
+      icon: '💬',
+      href: '/chat',
+      gradient: 'from-blue-500 to-cyan-500',
+      color: 'bg-blue-500' // colorプロパティを追加
     },
     {
-      icon: TrendingUp,
-      title: '運勢トラッカー',
-      description: '日々の運勢を記録して傾向を分析',
-      path: '/dashboard',
-      color: 'from-orange-500 to-red-500'
+      title: '運勢ダッシュボード',
+      description: 'あなたの運勢を可視化',
+      icon: '📊',
+      href: '/dashboard',
+      gradient: 'from-green-500 to-emerald-500',
+      color: 'bg-green-500' // colorプロパティを追加
     }
   ];
 
-  const stats = [
-    { label: '利用者数', value: '10,000+', icon: Users },
-    { label: '的中率', value: '92%', icon: Star },
-    { label: '満足度', value: '4.8/5', icon: Shield },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       {/* ヒーローセクション */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 to-pink-600/10" />
-        <div className="relative max-w-7xl mx-auto px-4 py-16 sm:py-24">
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-800/20 to-pink-800/20 animate-pulse" />
+        </div>
+        
+        <div className="relative container mx-auto px-4 py-16">
           <div className="text-center">
-            {/* ロゴ/タイトル */}
-            <div className="flex items-center justify-center mb-6">
-              <Sparkles className="w-12 h-12 text-purple-600 animate-pulse" />
-              <h1 className="text-5xl sm:text-6xl font-bold ml-4 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                Destiny Tracker
-              </h1>
+            <div className="flex justify-center mb-6">
+              <div className="relative">
+                <Sparkles className="w-20 h-20 text-yellow-400 animate-pulse" />
+                <Star className="w-8 h-8 text-yellow-300 absolute -top-2 -right-2 animate-spin-slow" />
+                <Moon className="w-6 h-6 text-blue-300 absolute -bottom-1 -left-1 animate-bounce" />
+              </div>
             </div>
             
-            {/* サブタイトル */}
-            <p className="text-xl sm:text-2xl text-gray-600 mb-8 max-w-2xl mx-auto">
-              AIとデータで運命を可視化する
-              <br />
-              次世代占いプラットフォーム
+            <h1 className="text-5xl md:text-7xl font-bold text-white mb-6 bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-400">
+              Destiny Tracker
+            </h1>
+            
+            <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-2xl mx-auto">
+              AIが導く、あなただけの運命の羅針盤
             </p>
-
-            {/* CTA ボタン */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-              <button
-                onClick={() => router.push('/auth/signup')}
-                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold text-lg hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-2"
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link
+                href="/palm"
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-full hover:from-purple-700 hover:to-pink-700 transform hover:scale-105 transition-all shadow-lg"
               >
-                <Zap className="w-5 h-5" />
-                無料で始める
+                今すぐ占いを始める
+              </Link>
+              <button className="px-8 py-4 bg-white/10 backdrop-blur-md text-white font-semibold rounded-full hover:bg-white/20 transition-all border border-white/30">
+                詳しく見る
               </button>
-              <button
-                onClick={() => router.push('/auth/login')}
-                className="px-8 py-4 bg-white text-purple-600 rounded-full font-semibold text-lg border-2 border-purple-600 hover:bg-purple-50 transition-all flex items-center justify-center gap-2"
-              >
-                ログイン
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* 統計情報 */}
-            <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto">
-              {stats.map((stat, index) => (
-                <div key={index} className="text-center">
-                  <stat.icon className="w-8 h-8 mx-auto mb-2 text-purple-600" />
-                  <div className="text-2xl font-bold text-gray-800">{stat.value}</div>
-                  <div className="text-sm text-gray-600">{stat.label}</div>
-                </div>
-              ))}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 機能一覧 */}
-      <div className="max-w-7xl mx-auto px-4 py-16">
+      {/* 機能カード */}
+      <div className="container mx-auto px-4 py-20">
         <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-gray-800 mb-4">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             選べる占い機能
           </h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            最新のAI技術と伝統的な占術を組み合わせた、
-            あなただけの特別な占い体験をお届けします
+          <p className="text-gray-400">
+            最先端のAI技術であなたの運命を解き明かします
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((feature, index) => (
-            <div
+            <Link
               key={index}
-              onClick={() => router.push(feature.path)}
-              className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all cursor-pointer transform hover:scale-105 overflow-hidden group"
+              href={feature.href}
+              className="group relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-md p-6 hover:bg-white/20 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl"
             >
-              <div className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className={`inline-flex p-3 rounded-lg bg-gradient-to-r ${feature.color} mb-4`}>
-                      <feature.icon className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-2">
-                      {feature.title}
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                      {feature.description}
-                    </p>
-                    <div className="flex items-center text-purple-600 font-semibold group-hover:gap-3 transition-all">
-                      <span>試してみる</span>
-                      <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-                </div>
+              <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-20 transition-opacity`} />
+              
+              <div className="relative z-10">
+                <div className="text-5xl mb-4">{feature.icon}</div>
+                <h3 className="text-xl font-bold text-white mb-2">
+                  {feature.title}
+                </h3>
+                <p className="text-gray-300 text-sm">
+                  {feature.description}
+                </p>
               </div>
-              <div className={`h-1 bg-gradient-to-r ${feature.color} opacity-50 group-hover:opacity-100 transition-opacity`} />
-            </div>
+
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white/50 to-transparent transform scale-x-0 group-hover:scale-x-100 transition-transform" />
+            </Link>
           ))}
         </div>
       </div>
 
       {/* 特徴セクション */}
-      <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white py-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">
-              なぜDestiny Trackerが選ばれるのか
-            </h2>
+      <div className="container mx-auto px-4 py-20">
+        <div className="grid md:grid-cols-3 gap-8">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">最先端AI技術</h3>
+            <p className="text-gray-400">
+              Claude AIによる高精度な占い解析
+            </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">安心・安全</h3>
-              <p className="text-white/80">
-                プライバシーを最優先に、
-                あなたのデータを厳重に保護
-              </p>
+          
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center">
+              <Heart className="w-8 h-8 text-white" />
             </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Zap className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">高精度AI</h3>
-              <p className="text-white/80">
-                最新のAI技術で、
-                より正確な占い結果を提供
-              </p>
+            <h3 className="text-xl font-bold text-white mb-2">パーソナライズ</h3>
+            <p className="text-gray-400">
+              あなただけの運勢を詳細に分析
+            </p>
+          </div>
+          
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full flex items-center justify-center">
+              <Sun className="w-8 h-8 text-white" />
             </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Star className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">豊富な実績</h3>
-              <p className="text-white/80">
-                10,000人以上のユーザーに
-                愛されている占いサービス
-              </p>
-            </div>
+            <h3 className="text-xl font-bold text-white mb-2">24時間対応</h3>
+            <p className="text-gray-400">
+              いつでもどこでも占い相談可能
+            </p>
           </div>
         </div>
       </div>
 
+      {/* CTA セクション */}
+      <div className="container mx-auto px-4 py-20">
+        <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-3xl p-12 text-center shadow-2xl">
+          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
+            運命の扉を開きましょう
+          </h2>
+          <p className="text-white/90 mb-8 max-w-2xl mx-auto">
+            AIの力で、あなたの未来への道筋を照らします。
+            今すぐ始めて、新しい自分を発見してください。
+          </p>
+          <Link
+            href="/palm"
+            className="inline-block px-8 py-4 bg-white text-purple-600 font-bold rounded-full hover:bg-gray-100 transform hover:scale-105 transition-all shadow-lg"
+          >
+            無料で占いを始める
+          </Link>
+        </div>
+      </div>
+
       {/* フッター */}
-      <footer className="bg-gray-50 py-8 mt-16">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="text-center text-gray-600 text-sm">
-            <p>© 2024 Destiny Tracker. All rights reserved.</p>
-            <div className="flex justify-center gap-4 mt-4">
-              <button className="hover:text-purple-600">利用規約</button>
-              <button className="hover:text-purple-600">プライバシーポリシー</button>
-              <button className="hover:text-purple-600">お問い合わせ</button>
-            </div>
+      <footer className="border-t border-white/10 mt-20">
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center text-gray-400">
+            <p>&copy; 2025 Destiny Tracker. All rights reserved.</p>
           </div>
         </div>
       </footer>

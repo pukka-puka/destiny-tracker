@@ -13,21 +13,19 @@ build/
 dist/
 
 # Production
-*.log
+*.local
 
-# Environment variables（重要！秘密情報を公開しない）
+# Environment variables
 .env
 .env.local
 .env.production.local
 .env.development.local
 .env.test.local
 
-# Firebase
-.firebase/
-firebase-debug.log
-firestore-debug.log
-ui-debug.log
-pubsub-debug.log
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # IDE
 .vscode/
@@ -36,7 +34,15 @@ pubsub-debug.log
 *.swo
 .DS_Store
 
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+pubsub-debug.log
+database-debug.log
+
+# Misc
+*.log
+.turbo/
+.vercel

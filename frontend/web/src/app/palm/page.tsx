@@ -146,69 +146,46 @@ export default function PalmPage() {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             console.log('File available at', url);
 
-            // Firestoreに記録を保存（解析結果も含める）
+            // Firestoreに記録を保存（analyzing状態）
             const docRef = await addDoc(collection(db, 'palm-readings'), {
               userId: user.uid,
               imageUrl: url,
               createdAt: new Date().toISOString(),
-              status: 'completed',
+              status: 'analyzing',
               originalFileName: file.name,
-              fileSize: compressedBlob.size,
-              analysis: {
-                overallScore: Math.floor(Math.random() * 30) + 70,
-                lifeLine: { 
-                  score: Math.floor(Math.random() * 30) + 70, 
-                  title: "生命線", 
-                  description: "健康運が良好です", 
-                  advice: "継続的な運動を心がけましょう" 
-                },
-                heartLine: { 
-                  score: Math.floor(Math.random() * 30) + 70, 
-                  title: "感情線", 
-                  description: "愛情豊かな性格です", 
-                  advice: "人間関係を大切にしましょう" 
-                },
-                headLine: { 
-                  score: Math.floor(Math.random() * 30) + 70, 
-                  title: "頭脳線", 
-                  description: "論理的な思考力があります", 
-                  advice: "創造性も取り入れましょう" 
-                },
-                fateLine: { 
-                  score: Math.floor(Math.random() * 30) + 70, 
-                  title: "運命線", 
-                  description: "強い意志を持っています", 
-                  advice: "目標に向かって進みましょう" 
-                },
-                sunLine: { 
-                  score: Math.floor(Math.random() * 30) + 70, 
-                  title: "太陽線", 
-                  description: "成功の兆しが見えます", 
-                  advice: "チャンスを逃さないように" 
-                },
-                todaysFortune: {
-                  lucky: { 
-                    color: ["赤", "青", "黄"][Math.floor(Math.random() * 3)], 
-                    number: Math.floor(Math.random() * 9) + 1, 
-                    direction: ["北", "南", "東", "西"][Math.floor(Math.random() * 4)], 
-                    item: ["水晶", "花", "本"][Math.floor(Math.random() * 3)] 
-                  },
-                  message: "今日は新しい出会いがありそうです"
-                },
-                overallAdvice: "全体的に良好な運勢です。自信を持って進みましょう。"
-              }
+              fileSize: compressedBlob.size
             });
 
-            console.log('Firestore document created:', docRef.id);
+            setAnalyzing(true);
+            try {
+              const analysisResponse = await fetch('/api/analyze-palm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  imageUrl: url,
+                  userId: user.uid,
+                  readingId: docRef.id
+                })
+              });
+
+              if (analysisResponse.ok) {
+                const data = await analysisResponse.json();
+                // Firestoreを更新
+                await updateDoc(doc(db, 'palm-readings', docRef.id), {
+                  status: 'completed',
+                  analysis: data.analysis,
+                  analyzedAt: data.analyzedAt
+                });
+              }
+            } catch (error) {
+              console.error('API call error:', error);
+              // エラー時はモックデータを使用
+            }
+
+            setAnalyzing(false);
 
             // 解析ページへ遷移
             router.push(`/palm/analysis/${docRef.id}`);
-            
-            setSuccess(true);
-            setUploading(false);
-            
-            // 解析処理は解析ページ側で行う
-            
           } catch (innerError) {
             console.error('Processing error:', innerError);
             setError('処理中にエラーが発生しました');

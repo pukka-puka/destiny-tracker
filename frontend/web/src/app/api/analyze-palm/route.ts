@@ -1,70 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 
-// ダミーの手相解析結果を生成（後でClaude APIに置き換え）
-function generateDummyAnalysis() {
-  const scores = {
-    lifeLine: Math.floor(Math.random() * 30) + 70,
-    heartLine: Math.floor(Math.random() * 30) + 70,
-    headLine: Math.floor(Math.random() * 30) + 70,
-    fateLine: Math.floor(Math.random() * 30) + 70,
-    sunLine: Math.floor(Math.random() * 30) + 70
-  };
-
-  return {
-    // 総合運勢スコア
-    overallScore: Math.floor(Object.values(scores).reduce((a, b) => a + b, 0) / 5),
-    
-    // 各線の詳細分析
-    lifeLine: {
-      score: scores.lifeLine,
-      title: "生命線",
-      description: "生命線がはっきりとしており、健康運が良好です。長寿の相が見られます。",
-      advice: "現在の健康的な生活習慣を維持することで、より充実した人生を送れるでしょう。"
-    },
-    
-    heartLine: {
-      score: scores.heartLine,
-      title: "感情線",
-      description: "感情線が美しい弧を描いており、豊かな感受性と愛情深さを示しています。",
-      advice: "あなたの優しさは周囲の人々を幸せにします。自分の感情も大切にしましょう。"
-    },
-    
-    headLine: {
-      score: scores.headLine,
-      title: "頭脳線",
-      description: "頭脳線が明瞭で、論理的思考力と創造性のバランスが取れています。",
-      advice: "新しいことにチャレンジする絶好の時期です。学習や創作活動に取り組んでみましょう。"
-    },
-    
-    fateLine: {
-      score: scores.fateLine,
-      title: "運命線",
-      description: "運命線が力強く伸びており、目標達成への強い意志を示しています。",
-      advice: "今年は大きな転機が訪れる可能性があります。チャンスを逃さないよう準備しておきましょう。"
-    },
-    
-    sunLine: {
-      score: scores.sunLine,
-      title: "太陽線",
-      description: "太陽線が現れており、成功と幸運の兆しが見えます。",
-      advice: "あなたの才能が開花する時期です。自信を持って前進しましょう。"
-    },
-    
-    // 今日の運勢
-    todaysFortune: {
-      lucky: {
-        color: ["赤", "オレンジ", "黄色"][Math.floor(Math.random() * 3)],
-        number: Math.floor(Math.random() * 9) + 1,
-        direction: ["北", "南", "東", "西"][Math.floor(Math.random() * 4)],
-        item: ["水晶", "花", "本", "鍵"][Math.floor(Math.random() * 4)]
-      },
-      message: "今日は新しい出会いがありそうです。積極的に行動することで良い結果が得られるでしょう。"
-    },
-    
-    // 総合アドバイス
-    overallAdvice: "あなたの手相は全体的にバランスが良く、幸運な相を持っています。自分の直感を信じて行動することで、より良い未来を築けるでしょう。"
-  };
-}
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,11 +17,92 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ダミーの処理時間をシミュレート（1-2秒）
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // 画像をBase64に変換
+    const imageResponse = await fetch(imageUrl);
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
 
-    // ダミー解析結果を生成
-    const analysis = generateDummyAnalysis();
+    // Claude Sonnet 4で解析（モデル名は正式リリース時に更新）
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',  // ← 正しいモデルIDに修正
+      max_tokens: 2000,
+      temperature: 0.7,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/jpeg',
+              data: base64Image
+            }
+          },
+          {
+            type: 'text',
+            text: `手相画像を分析し、JSON形式で結果を返してください。
+
+{
+  "overallScore": 70-95の範囲の整数,
+  "lifeLine": {
+    "score": 70-95の範囲の整数,
+    "title": "生命線",
+    "description": "生命線の特徴を2文で",
+    "advice": "健康アドバイスを1文で"
+  },
+  "heartLine": {
+    "score": 70-95の範囲の整数,
+    "title": "感情線",
+    "description": "感情線の特徴を2文で",
+    "advice": "恋愛アドバイスを1文で"
+  },
+  "headLine": {
+    "score": 70-95の範囲の整数,
+    "title": "頭脳線",
+    "description": "頭脳線の特徴を2文で",
+    "advice": "知的活動のアドバイスを1文で"
+  },
+  "fateLine": {
+    "score": 70-95の範囲の整数,
+    "title": "運命線",
+    "description": "運命線の特徴を2文で",
+    "advice": "キャリアアドバイスを1文で"
+  },
+  "sunLine": {
+    "score": 70-95の範囲の整数,
+    "title": "太陽線",
+    "description": "太陽線の特徴を2文で",
+    "advice": "成功へのアドバイスを1文で"
+  },
+  "todaysFortune": {
+    "lucky": {
+      "color": "赤/青/黄/緑/紫から1つ",
+      "number": 1-9の整数,
+      "direction": "北/南/東/西から1つ",
+      "item": "具体的なアイテム1つ"
+    },
+    "message": "今日の運勢を1文で"
+  },
+  "overallAdvice": "総合アドバイスを2文で"
+}
+
+JSONのみ返してください。`
+          }
+        ]
+      }]
+    });
+
+    // JSONを抽出
+    const analysisText = response.content[0].type === 'text' 
+      ? response.content[0].text 
+      : '';
+    
+    const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+    const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+    if (!analysis) {
+      throw new Error('解析結果の取得に失敗しました');
+    }
 
     return NextResponse.json({
       success: true,
@@ -94,7 +114,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Analysis error:', error);
     return NextResponse.json(
-      { error: '解析中にエラーが発生しました' },
+      { error: '解析エラーが発生しました' },
       { status: 500 }
     );
   }
