@@ -1,51 +1,34 @@
-// src/components/auth/LoginButton.tsx
-
 'use client';
 
-import React, { useState } from 'react';
-import { LogIn } from 'lucide-react';
+import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '@/lib/auth/firebase-auth';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { LoginModal } from './LoginModal';
+import { LogIn } from 'lucide-react';
+import LoginModal from './LoginModal';
 
-export const LoginButton: React.FC = () => {
-  // signOutを正しく取得
-  const authContext = useAuth();
-  const { user } = authContext;
-  const [showModal, setShowModal] = useState(false);
-
-  const handleSignOut = async () => {
-    try {
-      await authContext.signOut();
-    } catch (error) {
-      console.error('サインアウトエラー:', error);
-    }
-  };
+export function LoginButton() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { user } = useAuth();
 
   if (user) {
-    return (
-      <button
-        onClick={handleSignOut}
-        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-      >
-        ログアウト
-      </button>
-    );
+    return null;
   }
 
   return (
     <>
       <button
-        onClick={() => setShowModal(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105"
+        onClick={() => setIsModalOpen(true)}
+        className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition"
       >
         <LogIn className="w-4 h-4" />
-        <span>ログイン</span>
+        ログイン
       </button>
       
       <LoginModal 
-        isOpen={showModal} 
-        onClose={() => setShowModal(false)} 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
       />
     </>
   );
-};
+}
