@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { saveTarotReading } from '@/lib/services/destiny.service';
+import { destinyService } from '@/lib/services/destiny.service';
 import { majorArcana, calculateParametersFromCards } from '@/data/tarot-cards';
 import { Sparkles, RefreshCw, ArrowRight, Heart, Briefcase, DollarSign, Star } from 'lucide-react';
 import Image from 'next/image';
@@ -275,10 +275,32 @@ ${categoryLabel}において、あなたは正しい道を歩んでいます。
       const parameters = calculateParametersFromCards(selectedCards);
       const overallScore = Math.round(Object.values(parameters).reduce((a: number, b: number) => a + b, 0) / 6);
       
+      const reading = {
+        userId: user.uid,
+        readingType: 'daily-tarot' as const,
+        parameters,
+        daily: {
+          overall: overallScore,
+          luckyColor: ['赤', '青', '緑', '黄', '紫', '橙'][Math.floor(Math.random() * 6)],
+          luckyNumber: Math.floor(Math.random() * 9) + 1,
+          advice: '今日は新しいことにチャレンジする絶好の日です。'
+        },
+        tarotReading: {
+          cards: selectedCards,
+          spread: 'past-present-future' as const,
+          interpretation,
+          shortTermAdvice: '直感を信じて行動することが成功への鍵となります。',
+          detailedMeanings: {
+            past: `${selectedCards[0].nameJa}：${selectedCards[0].meaning}`,
+            present: `${selectedCards[1].nameJa}：${selectedCards[1].meaning}`,
+            future: `${selectedCards[2].nameJa}：${selectedCards[2].meaning}`
+          }
+        }
+      };
       
-      await saveTarotReading(selectedCards, interpretation, selectedCategory, parameters);
+      await destinyService.createReading(reading);
       
-      console.log('✅ 占い結果を保存しました！');
+      console.log('✅ 占い結果を保存しました！', reading);
       
       router.push('/dashboard');
     } catch (error) {

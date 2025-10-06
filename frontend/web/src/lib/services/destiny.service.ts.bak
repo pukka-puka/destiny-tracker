@@ -21,63 +21,58 @@ import {
   DailyFortune
 } from '@/types/destiny.types';
 
-// タロット占いを保存（カードの意味に基づいたパラメータを使用）
+// タロット占いを保存
 export async function saveTarotReading(
   cards: TarotCard[],
   interpretation: string,
-  category: 'general' | 'love' | 'career' | 'money' = 'general',
-  parameters: DestinyParameters  // 必須パラメータに変更
+  category: 'general' | 'love' | 'career' | 'money' = 'general'
 ): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('User not authenticated');
 
-  // カテゴリに応じてパラメーターを微調整
-  const adjustedParameters = { ...parameters };
-  if (category === 'love') adjustedParameters.love = Math.min(100, adjustedParameters.love + 10);
-  if (category === 'career') adjustedParameters.career = Math.min(100, adjustedParameters.career + 10);
-  if (category === 'money') adjustedParameters.money = Math.min(100, adjustedParameters.money + 10);
+  // パラメーター計算（仮の実装）
+  const parameters: DestinyParameters = {
+    love: Math.floor(Math.random() * 40) + 60,
+    career: Math.floor(Math.random() * 40) + 60,
+    money: Math.floor(Math.random() * 40) + 60,
+    health: Math.floor(Math.random() * 40) + 60,
+    social: Math.floor(Math.random() * 40) + 60,
+    growth: Math.floor(Math.random() * 40) + 60,
+  };
 
-  // 総合運勢スコアを計算
-  const fortuneScore = Math.round(
-    Object.values(adjustedParameters).reduce((a, b) => a + b, 0) / 6
-  );
+  // カテゴリに応じてパラメーターを調整
+  if (category === 'love') parameters.love = Math.min(100, parameters.love + 20);
+  if (category === 'career') parameters.career = Math.min(100, parameters.career + 20);
+  if (category === 'money') parameters.money = Math.min(100, parameters.money + 20);
 
   const reading: Omit<DestinyReading, 'id'> = {
     userId: user.uid,
     readingType: 'daily-tarot',
-    parameters: adjustedParameters,
+    parameters,
     daily: {
-      fortune: fortuneScore,
+      date: new Date().toISOString().split('T')[0],
+      fortune: Math.floor(Math.random() * 40) + 60,
       message: interpretation.substring(0, 200),
-      luckyColor: ['赤', '青', '黄', '緑', '紫', '橙'][Math.floor(Math.random() * 6)],
+      luckyColor: ['赤', '青', '黄', '緑', '紫'][Math.floor(Math.random() * 5)],
       luckyNumber: Math.floor(Math.random() * 9) + 1,
     },
     tarotReading: {
       cards: cards.map(c => ({
         id: c.id,
         name: c.name,
-        nameJa: c.nameJa || c.name,
         meaning: c.meaning,
         reversed: c.reversed || false,
-        keywords: c.keywords,
-        description: c.description
+        image: c.image
       })),
       interpretation,
       category,
       spreadType: 'three-card',
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
   };
 
-  // Firestoreに保存する際はTimestampに変換
-  const firestoreData = {
-    ...reading,
-    createdAt: Timestamp.fromDate(reading.createdAt),
-    updatedAt: Timestamp.fromDate(reading.updatedAt),
-  };
-
-  const docRef = await addDoc(collection(db, 'readings'), firestoreData);
+  const docRef = await addDoc(collection(db, 'readings'), reading);
   return docRef.id;
 }
 
@@ -99,30 +94,21 @@ export async function getLatestReadings(
   q = query(q, orderBy('createdAt', 'desc'), limit(limitCount));
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    } as DestinyReading;
-  });
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as DestinyReading));
 }
 
 // 今日の運勢を取得
 export async function getTodaysFortune(userId: string): Promise<DailyFortune | null> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const today = new Date().toISOString().split('T')[0];
   
   const q = query(
     collection(db, 'readings'),
     where('userId', '==', userId),
     where('readingType', '==', 'daily-tarot'),
-    where('createdAt', '>=', Timestamp.fromDate(today)),
-    where('createdAt', '<', Timestamp.fromDate(tomorrow)),
+    where('daily.date', '==', today),
     orderBy('createdAt', 'desc'),
     limit(1)
   );
@@ -131,17 +117,22 @@ export async function getTodaysFortune(userId: string): Promise<DailyFortune | n
   
   if (snapshot.empty) return null;
   
-  const reading = snapshot.docs[0].data() as DocumentData;
+  const reading = snapshot.docs[0].data() as DestinyReading;
   return reading.daily || null;
 }
 
 // 統計情報を取得
 export async function getUserStatistics(userId: string) {
+  // 全ての占い回数
   const allReadings = await getLatestReadings(userId, undefined, 1000);
   
+  // タロット占い回数
   const tarotCount = allReadings.filter(r => r.readingType === 'daily-tarot').length;
+  
+  // 手相占い回数
   const palmCount = allReadings.filter(r => r.readingType === 'palm').length;
 
+  // 平均パラメーター
   const avgParameters: DestinyParameters = {
     love: 0,
     career: 0,
@@ -155,7 +146,7 @@ export async function getUserStatistics(userId: string) {
     allReadings.forEach(reading => {
       Object.keys(avgParameters).forEach(key => {
         const param = key as keyof DestinyParameters;
-        avgParameters[param] += reading.parameters[param] || 0;
+        avgParameters[param] += reading.parameters[param];
       });
     });
 
@@ -170,7 +161,7 @@ export async function getUserStatistics(userId: string) {
     tarotCount,
     palmCount,
     averageParameters: avgParameters,
-    readings: allReadings.slice(0, 10),
+    readings: allReadings.slice(0, 10), // 最新10件
   };
 }
 
@@ -189,18 +180,13 @@ export async function getReadingsByDateRange(
   );
 
   const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-      updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    } as DestinyReading;
-  });
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as DestinyReading));
 }
 
-// 画像アップロード関数（手相占いで使用）
+// 画像アップロード関数
 export async function uploadImage(file: File, path: string): Promise<string> {
   const timestamp = Date.now();
   const fileName = `${timestamp}_${file.name}`;

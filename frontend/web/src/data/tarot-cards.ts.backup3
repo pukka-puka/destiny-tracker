@@ -1,0 +1,54 @@
+import { DestinyParameters } from "@/types/destiny.types";
+// src/data/tarot-cards.ts
+
+export const majorArcana = [
+  { id: '0', name: 'The Fool', nameJa: '愚者', meaning: '新しい始まり、無限の可能性、冒険' },
+  { id: '1', name: 'The Magician', nameJa: '魔術師', meaning: '創造力、スキル、意志の力' },
+  { id: '2', name: 'The High Priestess', nameJa: '女教皇', meaning: '直感、潜在意識、神秘' },
+  { id: '3', name: 'The Empress', nameJa: '女帝', meaning: '豊穣、母性、創造' },
+  { id: '4', name: 'The Emperor', nameJa: '皇帝', meaning: '権威、構造、安定' },
+  { id: '5', name: 'The Hierophant', nameJa: '教皇', meaning: '伝統、精神的指導、学習' },
+  { id: '6', name: 'The Lovers', nameJa: '恋人', meaning: '愛、調和、選択' },
+  { id: '7', name: 'The Chariot', nameJa: '戦車', meaning: '勝利、意志力、前進' },
+  { id: '8', name: 'Strength', nameJa: '力', meaning: '内なる強さ、勇気、忍耐' },
+  { id: '9', name: 'The Hermit', nameJa: '隠者', meaning: '内省、探求、導き' },
+  { id: '10', name: 'Wheel of Fortune', nameJa: '運命の輪', meaning: '変化、サイクル、運命' },
+  { id: '11', name: 'Justice', nameJa: '正義', meaning: '公正、真実、バランス' },
+  { id: '12', name: 'The Hanged Man', nameJa: '吊るされた男', meaning: '犠牲、新しい視点、待機' },
+  { id: '13', name: 'Death', nameJa: '死神', meaning: '変容、終わりと始まり、再生' },
+  { id: '14', name: 'Temperance', nameJa: '節制', meaning: 'バランス、調和、忍耐' },
+  { id: '15', name: 'The Devil', nameJa: '悪魔', meaning: '束縛、執着、誘惑' },
+  { id: '16', name: 'The Tower', nameJa: '塔', meaning: '突然の変化、啓示、解放' },
+  { id: '17', name: 'The Star', nameJa: '星', meaning: '希望、インスピレーション、平穏' },
+  { id: '18', name: 'The Moon', nameJa: '月', meaning: '幻想、不安、直感' },
+  { id: '19', name: 'The Sun', nameJa: '太陽', meaning: '成功、活力、喜び' },
+  { id: '20', name: 'Judgement', nameJa: '審判', meaning: '再生、内なる呼びかけ、判断' },
+  { id: '21', name: 'The World', nameJa: '世界', meaning: '完成、達成、統合' }
+];
+
+// タロット解釈生成ヘルパー
+export function generateTarotInterpretation(cards: any[], spread: string): string {
+  const past = cards[0];
+  const present = cards[1];
+  const future = cards[2];
+  
+  return `過去の${past.nameJa}が示すのは${past.meaning}の影響です。
+現在は${present.nameJa}のエネルギーが働いており、${present.meaning}の状況にあります。
+未来に向けては${future.nameJa}が暗示する${future.meaning}の展開が予想されます。`;
+}
+
+// 運勢パラメータ計算
+export function calculateParametersFromCards(cards: any[]): DestinyParameters {
+  // カードIDに基づいて各パラメータを計算
+  const baseValue = 50;
+  const variation = 30;
+  
+  return {
+    love: Math.min(100, baseValue + (cards[0].id % 5) * 10),
+    career: Math.min(100, baseValue + (cards[1].id % 5) * 10),
+    money: Math.min(100, baseValue + (cards[2].id % 5) * 10),
+    health: Math.min(100, baseValue + ((cards[0].id + cards[1].id) % 5) * 10),
+    social: Math.min(100, baseValue + ((cards[1].id + cards[2].id) % 5) * 10),
+    growth: Math.min(100, baseValue + ((cards[0].id + cards[2].id) % 5) * 10)
+  };
+}

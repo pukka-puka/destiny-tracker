@@ -1,0 +1,345 @@
+// src/lib/services/destiny.service.ts
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs,
+  addDoc,
+  updateDoc,
+  doc,
+  getDoc,
+  Timestamp,
+  DocumentData
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { 
+  DestinyReading, 
+  UserStats, 
+  DestinyParameters,
+  DailyFortune
+} from '@/types/destiny.types';
+
+// 定数定義を追加
+const LUCKY_COLORS = ['赤', '青', '黄', '緑', '紫', '橙', '白', '黒'];
+const LUCKY_ITEMS = ['鍵', '鏡', '本', '花', '時計', '石', '羽', '指輪'];
+
+// ランダムな値を生成するヘルパー関数
+function getRandomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// 今日の運勢を生成
+function generateDailyFortune(): DailyFortune {
+  const fortunes = [
+    '素晴らしい一日になるでしょう！新しい出会いがありそうです。',
+    '慎重に行動することで良い結果が得られます。',
+    '直感を信じて行動すると吉。チャンスを逃さないで。',
+    '人との繋がりを大切にすると運気アップ。',
+    '今日は充電の日。無理をせずゆっくり過ごしましょう。'
+  ];
+  
+  const advices = [
+    '笑顔を心がけると良いことが起きそう',
+    '感謝の気持ちを伝えると運気アップ',
+    '新しいことにチャレンジすると吉',
+    '丁寧な行動が幸運を呼びます',
+    '深呼吸して心を落ち着けましょう'
+  ];
+
+  return {
+    overall: getRandomInt(60, 95),
+    luckyColor: LUCKY_COLORS[getRandomInt(0, LUCKY_COLORS.length - 1)],
+    luckyNumber: getRandomInt(1, 9),
+    advice: advices[getRandomInt(0, advices.length - 1)]
+  };
+}
+
+// パラメータを生成
+function generateRandomParameters(): DestinyParameters {
+  return {
+    love: getRandomInt(50, 100),
+    work: getRandomInt(50, 100),
+    money: getRandomInt(50, 100),
+    health: getRandomInt(50, 100),
+    social: getRandomInt(50, 100),
+    growth: getRandomInt(50, 100)
+  };
+}
+
+// 平均パラメータを計算
+function calculateAverageParameters(readings: DestinyReading[]): DestinyParameters {
+  if (readings.length === 0) {
+    return {
+      love: 0,
+      money: 0,
+      health: 0,
+      work: 0,
+      social: 0,
+      growth: 0
+    };
+  }
+
+  const sums = readings.reduce((acc, reading) => ({
+    love: acc.love + reading.parameters.love,
+    money: acc.money + reading.parameters.money,
+    health: acc.health + reading.parameters.health,
+    work: acc.work + reading.parameters.work,
+    social: acc.social + reading.parameters.social,
+    growth: acc.growth + reading.parameters.growth
+  }), {
+    love: 0,
+    money: 0,
+    health: 0,
+    work: 0,
+    social: 0,
+    growth: 0
+  });
+
+  const count = readings.length;
+  return {
+    love: Math.round(sums.love / count),
+    money: Math.round(sums.money / count),
+    health: Math.round(sums.health / count),
+    work: Math.round(sums.work / count),
+    social: Math.round(sums.social / count),
+    growth: Math.round(sums.growth / count)
+  };
+}
+
+// Firestore のデータを DestinyReading 型に変換
+function convertToDestinyReading(id: string, data: DocumentData): DestinyReading {
+  return {
+    id,
+    userId: data.userId,
+    createdAt: data.createdAt?.toDate() || new Date(),
+    updatedAt: data.updatedAt?.toDate() || new Date(),
+    readingType: data.readingType || 'daily-tarot',
+    parameters: data.parameters || generateRandomParameters(),
+    daily: data.daily,
+    tarotReading: data.tarotReading,
+    palmReading: data.palmReading
+  };
+}
+
+export const destinyService = {
+  // 新しい占いを作成
+  createReading: async (reading: Partial<DestinyReading>): Promise<string> => {
+    try {
+      const now = new Date();
+      const docRef = await addDoc(collection(db, 'readings'), {
+        ...reading,
+        readingType: reading.readingType || 'daily-tarot',
+        createdAt: Timestamp.fromDate(reading.createdAt || now),
+        updatedAt: Timestamp.fromDate(reading.updatedAt || now)
+      });
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating reading:', error);
+      throw error;
+    }
+  },
+
+  // 新しい占いを生成して保存（互換性のため残す）
+  generateNewReading: async (userId: string): Promise<DestinyReading> => {
+    const reading: Partial<DestinyReading> = {
+      userId,
+      readingType: 'daily-tarot',
+      parameters: generateRandomParameters(),
+      daily: generateDailyFortune(),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const id = await destinyService.createReading(reading);
+    
+    return {
+      id,
+      ...reading
+    } as DestinyReading;
+  },
+
+  // 今日の占いを取得
+  getTodayReading: async (userId: string): Promise<DestinyReading | null> => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const q = query(
+        collection(db, 'readings'),
+        where('userId', '==', userId),
+        where('createdAt', '>=', Timestamp.fromDate(today)),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const doc = snapshot.docs[0];
+      return convertToDestinyReading(doc.id, doc.data());
+    } catch (error) {
+      console.error('Error getting today reading:', error);
+      return null;
+    }
+  },
+
+  // 占い履歴を取得
+  getReadingHistory: async (userId: string, days: number = 30): Promise<DestinyReading[]> => {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      
+      const q = query(
+        collection(db, 'readings'),
+        where('userId', '==', userId),
+        where('createdAt', '>=', Timestamp.fromDate(startDate)),
+        orderBy('createdAt', 'desc')
+      );
+
+      const snapshot = await getDocs(q);
+      
+      return snapshot.docs.map(doc => 
+        convertToDestinyReading(doc.id, doc.data())
+      );
+    } catch (error) {
+      console.error('Error getting reading history:', error);
+      return [];
+    }
+  },
+
+  // ユーザー統計を取得
+  getUserStats: async (userId: string): Promise<UserStats | null> => {
+    try {
+      const allReadings = await destinyService.getReadingHistory(userId, 365);
+      
+      if (allReadings.length === 0) {
+        return {
+          totalReadings: 0,
+          tarotReadings: 0,
+          palmReadings: 0,
+          currentStreak: 0,
+          lastReadingDate: new Date(),
+          averageParameters: {
+            love: 0,
+            work: 0,
+            money: 0,
+            health: 0,
+            social: 0,
+            growth: 0
+          },
+          bestDay: {
+            date: new Date(),
+            overall: 0
+          }
+        };
+      }
+
+      // タロットと手相の回数をカウント
+      const tarotReadings = allReadings.filter(r => r.readingType === 'daily-tarot').length;
+      const palmReadings = allReadings.filter(r => r.readingType === 'palm').length;
+
+      // 連続日数を計算
+      let currentStreak = 0;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      for (let i = 0; i < 365; i++) {
+        const checkDate = new Date(today);
+        checkDate.setDate(checkDate.getDate() - i);
+        checkDate.setHours(0, 0, 0, 0);
+        
+        const hasReading = allReadings.some(r => {
+          const readingDate = new Date(r.createdAt);
+          readingDate.setHours(0, 0, 0, 0);
+          return readingDate.getTime() === checkDate.getTime();
+        });
+        
+        if (hasReading) {
+          currentStreak++;
+        } else if (i > 0) {
+          break;
+        }
+      }
+
+      // 最高の日を見つける
+      const bestDay = allReadings.reduce((best, reading) => {
+        const overall = reading.daily?.overall || 0;
+        return overall > best.overall ? 
+          { date: reading.createdAt, overall } : best;
+      }, { date: new Date(), overall: 0 });
+
+      return {
+        totalReadings: allReadings.length,
+        tarotReadings,
+        palmReadings,
+        currentStreak,
+        lastReadingDate: allReadings[0]?.createdAt || new Date(),
+        averageParameters: calculateAverageParameters(allReadings),
+        bestDay
+      };
+    } catch (error) {
+      console.error('Error getting user stats:', error);
+      return null;
+    }
+  },
+
+  // タロット占い取得
+  getTodayTarotReading: async (userId: string): Promise<DestinyReading | null> => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const q = query(
+      collection(db, 'readings'),
+      where('userId', '==', userId),
+      where('readingType', '==', 'daily-tarot'),
+      where('createdAt', '>=', Timestamp.fromDate(today)),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    
+    return convertToDestinyReading(
+      snapshot.docs[0].id, 
+      snapshot.docs[0].data()
+    );
+  },
+  
+  // 最新の手相占い取得
+  getLatestPalmReading: async (userId: string): Promise<DestinyReading | null> => {
+    const q = query(
+      collection(db, 'readings'),
+      where('userId', '==', userId),
+      where('readingType', '==', 'palm'),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    
+    return convertToDestinyReading(
+      snapshot.docs[0].id,
+      snapshot.docs[0].data()
+    );
+  }
+};
+
+// 画像アップロード関数
+export async function uploadImage(file: File, path: string): Promise<string> {
+  const timestamp = Date.now();
+  const fileName = `${timestamp}_${file.name}`;
+  const fullPath = `${path}/${fileName}`;
+  
+  const storageRef = ref(storage, fullPath);
+  const snapshot = await uploadBytes(storageRef, file);
+  const downloadUrl = await getDownloadURL(snapshot.ref);
+  
+  return downloadUrl;
+}

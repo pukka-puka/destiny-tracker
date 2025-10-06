@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUserStatistics, getLatestReadings, getTodaysFortune } from '@/lib/services/destiny.service';
+import { destinyService } from '@/lib/services/destiny.service';
 import { DestinyReading, UserStats } from '@/types/destiny.types';
 import ParameterCard from '@/components/dashboard/ParameterCard';
 import RadarChart from '@/components/dashboard/RadarChart';
@@ -36,9 +36,9 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       const [today, history, stats] = await Promise.all([
-        getTodaysFortune(user.uid),
-        getLatestReadings(user.uid, undefined, 30),
-        getUserStatistics(user.uid)
+        destinyService.getTodayReading(user.uid),
+        destinyService.getReadingHistory(user.uid, 30),
+        destinyService.getUserStats(user.uid)
       ]);
 
       // 今日のタロット占いを確認

@@ -2,7 +2,7 @@
 
 export interface DestinyParameters {
   love: number;      // 恋愛運
-  career: number;    // 仕事運
+  work: number;      // 仕事運
   money: number;     // 金運
   health: number;    // 健康運
   social: number;    // 対人運
@@ -10,10 +10,10 @@ export interface DestinyParameters {
 }
 
 export interface DailyFortune {
-  fortune: number;     // 総合運 (1-100)
-  message: string;     // メッセージ
+  overall: number;     // 総合運 (1-100)
   luckyColor: string;  // ラッキーカラー
   luckyNumber: number; // ラッキーナンバー
+  advice: string;      // 今日のアドバイス
 }
 
 // タロットカードのデータ
@@ -23,46 +23,34 @@ export interface TarotCard {
   nameJa: string;
   meaning: string;
   reversed?: boolean;
-  keywords?: string[];
-  description?: string;
+  imageUrl?: string;
 }
 
 // タロット占い結果
 export interface TarotReadingData {
-  cards: TarotCard[];
-  interpretation: string;
-  category: 'general' | 'love' | 'career' | 'money';
-  spreadType: 'single' | 'three-card' | 'celtic-cross';
+  cards: TarotCard[];           // 引いたカード（通常3枚）
+  spread: 'past-present-future' | 'three-cards' | 'celtic-cross';
+  interpretation: string;        // 総合的な解釈
+  shortTermAdvice: string;      // 短期的なアドバイス
+  detailedMeanings: {
+    past?: string;
+    present?: string;
+    future?: string;
+  };
 }
 
 // 手相占い結果
 export interface PalmReadingData {
-  imageUrl: string;
-  analysis: {
-    summary: string;
-    interpretation: string;
-    lines: {
-      lifeLine?: string;
-      headLine?: string;
-      heartLine?: string;
-      fateLine?: string;
-      sunLine?: string;
-      marriageLine?: string;
-    };
-    parameters: DestinyParameters;
-    advice: {
-      strength: string[];
-      opportunity: string[];
-      caution: string[];
-    };
-    fortune: {
-      overall: string;
-      luckyColor: string;
-      luckyNumber: string;
-      luckyItem: string;
-    };
+  imageUrl: string;              // 撮影した手相画像
+  lines: {
+    life: string;               // 生命線
+    heart: string;              // 感情線
+    head: string;               // 頭脳線
+    fate?: string;              // 運命線
   };
-  analyzedAt: Date;
+  interpretation: string;        // 総合的な解釈
+  personalityTraits: string[];  // 性格特徴
+  longTermForecast: string;     // 中長期的な運勢
 }
 
 // 拡張された占い記録
@@ -94,7 +82,7 @@ export interface UserStats {
 // パラメータの色定義
 export const PARAMETER_COLORS: Record<keyof DestinyParameters, string> = {
   love: '#FF6B9D',    // ピンク
-  career: '#4ECDC4',  // ターコイズ
+  work: '#4ECDC4',    // ターコイズ
   money: '#FFD93D',   // ゴールド
   health: '#95E77E',  // グリーン
   social: '#A8E6CF',  // ミント
@@ -104,7 +92,7 @@ export const PARAMETER_COLORS: Record<keyof DestinyParameters, string> = {
 // パラメータのラベル定義
 export const PARAMETER_LABELS: Record<keyof DestinyParameters, string> = {
   love: '恋愛運',
-  career: '仕事運',
+  work: '仕事運', 
   money: '金運',
   health: '健康運',
   social: '対人運',
@@ -114,7 +102,7 @@ export const PARAMETER_LABELS: Record<keyof DestinyParameters, string> = {
 // パラメータのアイコン定義（絵文字）
 export const PARAMETER_ICONS: Record<keyof DestinyParameters, string> = {
   love: '❤️',
-  career: '💼',
+  work: '💼',
   money: '💰',
   health: '🏃',
   social: '👥',
