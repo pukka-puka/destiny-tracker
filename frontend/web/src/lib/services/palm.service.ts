@@ -140,7 +140,8 @@ class PalmService {
   }
 
   // 過去の手相解析履歴を取得
-  async getPalmHistory(limit: number = 12): Promise<PalmAnalysis[]> {
+  // パラメータ名を limit から maxResults に変更
+  async getPalmHistory(maxResults: number = 12): Promise<PalmAnalysis[]> {
     const user = auth.currentUser;
     if (!user) {
       return [];
@@ -151,7 +152,7 @@ class PalmService {
       where('userId', '==', user.uid),
       where('readingType', '==', 'palm'),
       orderBy('createdAt', 'desc'),
-      limit(limit)
+      limit(maxResults)  // 変数名の衝突を解消
     );
 
     const snapshot = await getDocs(q);
