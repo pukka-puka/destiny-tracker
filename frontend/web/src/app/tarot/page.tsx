@@ -13,7 +13,7 @@ type TarotCategory = 'general' | 'love' | 'career' | 'money';
 
 export default function TarotPage() {
   const router = useRouter();
-  const [step, setStep] = useState<'intro' | 'shuffle' | 'select' | 'reading' | 'result'>('intro');
+  const [step, setStep] = useState<'intro' | 'shuffle' | 'select' | 'reveal' | 'reading' | 'result'>('intro');
   const [selectedCards, setSelectedCards] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<TarotCategory>('general');
   const [isShuffling, setIsShuffling] = useState(false);
@@ -21,6 +21,7 @@ export default function TarotPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [revealedCards, setRevealedCards] = useState<boolean[]>([false, false, false]);
 
   const categories: Array<{ id: TarotCategory; label: string; icon: any; color: string }> = [
     { id: 'general', label: '総合運', icon: Star, color: 'from-purple-500 to-pink-500' },
@@ -29,7 +30,6 @@ export default function TarotPage() {
     { id: 'money', label: '金運', icon: DollarSign, color: 'from-yellow-500 to-orange-500' }
   ];
 
-  // 認証の初期化
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -51,7 +51,6 @@ export default function TarotPage() {
     initAuth();
   }, []);
 
-  // カード画像名を取得
   const getCardImageName = (cardName: string): string => {
     const imageMap: { [key: string]: string } = {
       '愚者': '00-fool',
@@ -80,7 +79,6 @@ export default function TarotPage() {
     return imageMap[cardName] || '00-fool';
   };
 
-  // LocalStorage保存
   const saveToLocalStorage = (readingData: any) => {
     try {
       const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
@@ -99,7 +97,6 @@ export default function TarotPage() {
     }
   };
 
-  // Firestore保存
   const saveReading = async () => {
     if (saving) return;
     setSaving(true);
@@ -122,6 +119,10 @@ export default function TarotPage() {
         return;
       }
 
+      // カードからパラメータを計算
+      const parameters = calculateParametersFromCards(selectedCards);
+      console.log('計算されたパラメータ:', parameters);
+
       const readingData = {
         userId: currentUser.uid,
         cards: selectedCards.map(card => ({
@@ -133,6 +134,7 @@ export default function TarotPage() {
         })),
         interpretation: interpretation,
         category: selectedCategory,
+        parameters: parameters, // パラメータを追加
         createdAt: serverTimestamp(),
         type: 'tarot'
       };
@@ -155,7 +157,6 @@ export default function TarotPage() {
     }
   };
 
-  // カードをシャッフル
   const shuffleCards = () => {
     setIsShuffling(true);
     setTimeout(() => {
@@ -164,7 +165,6 @@ export default function TarotPage() {
     }, 2000);
   };
 
-  // カードを選択
   const selectCard = (index: number) => {
     if (selectedCards.length >= 3) return;
     
@@ -180,13 +180,26 @@ export default function TarotPage() {
     
     if (newSelectedCards.length === 3) {
       setTimeout(() => {
-        setStep('reading');
-        getInterpretation(newSelectedCards);
+        setStep('reveal');
+        // カードを1枚ずつリビール
+        revealCardsSequentially();
       }, 500);
     }
   };
 
-  // AI解釈を取得
+  // カードを順番にリビール
+  const revealCardsSequentially = () => {
+    setTimeout(() => setRevealedCards([true, false, false]), 500);
+    setTimeout(() => setRevealedCards([true, true, false]), 1500);
+    setTimeout(() => {
+      setRevealedCards([true, true, true]);
+      setTimeout(() => {
+        setStep('reading');
+        getInterpretation(selectedCards);
+      }, 1000);
+    }, 2500);
+  };
+
   const getInterpretation = async (cards: any[]) => {
     setLoading(true);
     try {
@@ -298,7 +311,6 @@ export default function TarotPage() {
             <h2 className="text-3xl font-bold mb-4">カードを3枚選んでください</h2>
             <p className="text-purple-200 mb-8">{selectedCards.length}/3 枚選択済み</p>
             
-            {/* カード裏面グリッド */}
             <div className="grid grid-cols-7 gap-2 mb-8">
               {[...Array(22)].map((_, i) => (
                 <button
@@ -312,7 +324,6 @@ export default function TarotPage() {
               ))}
             </div>
 
-            {/* 選択済みカードプレビュー（裏向き） */}
             {selectedCards.length > 0 && (
               <div className="flex gap-4">
                 {['過去', '現在', '未来'].map((label, i) => (
@@ -327,6 +338,39 @@ export default function TarotPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* カードリビール */}
+        {step === 'reveal' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh]">
+            <h2 className="text-3xl font-bold mb-8">あなたが選んだカード</h2>
+            <div className="flex gap-8 mb-8">
+              {selectedCards.map((card, i) => {
+                const imageName = getCardImageName(card.nameJa);
+                return (
+                  <div key={i} className="text-center">
+                    <p className="text-lg mb-2 text-yellow-300">{['過去', '現在', '未来'][i]}</p>
+                    <div className="w-32 h-48 rounded-lg shadow-2xl overflow-hidden transition-all duration-500">
+                      {revealedCards[i] ? (
+                        <img
+                          src={`/tarot-cards/${imageName}.jpg`}
+                          alt={card.nameJa}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-purple-600 to-pink-600 border-2 border-purple-300" />
+                      )}
+                    </div>
+                    {revealedCards[i] && (
+                      <p className="mt-2 text-sm text-purple-200 animate-fade-in">
+                        {card.nameJa}{card.isReversed ? '（逆位置）' : ''}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -352,7 +396,6 @@ export default function TarotPage() {
               {categories.find(c => c.id === selectedCategory)?.label}の占い結果
             </h2>
             
-            {/* カード表示 */}
             <div className="flex gap-8 mb-12">
               {selectedCards.map((card, i) => {
                 const imageName = getCardImageName(card.nameJa);
@@ -360,20 +403,11 @@ export default function TarotPage() {
                   <div key={i} className="text-center">
                     <p className="text-lg mb-2 text-yellow-300">{['過去', '現在', '未来'][i]}</p>
                     <div className="w-32 h-48 rounded-lg shadow-2xl overflow-hidden transform hover:scale-110 transition-transform">
-                      {imageName ? (
-                        <img
-                          src={`/tarot-cards/${imageName}.jpg`}
-                          alt={card.nameJa}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-yellow-400 to-orange-500 p-3">
-                          <div className="w-full h-full rounded border-2 border-yellow-600 flex flex-col items-center justify-center">
-                            <p className="text-xl font-bold text-purple-900">{card.nameJa}</p>
-                            {card.isReversed && <p className="text-xs text-purple-700 mt-1">逆位置</p>}
-                          </div>
-                        </div>
-                      )}
+                      <img
+                        src={`/tarot-cards/${imageName}.jpg`}
+                        alt={card.nameJa}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <p className="mt-2 text-sm text-purple-200">
                       {card.nameJa}{card.isReversed ? '（逆位置）' : ''}
@@ -383,7 +417,6 @@ export default function TarotPage() {
               })}
             </div>
 
-            {/* AI解釈 */}
             <div className="max-w-4xl w-full bg-purple-800/50 backdrop-blur rounded-xl p-8 mb-8">
               <div className="prose prose-invert max-w-none">
                 <div className="whitespace-pre-wrap text-purple-100 leading-relaxed text-lg">
@@ -392,13 +425,13 @@ export default function TarotPage() {
               </div>
             </div>
 
-            {/* アクションボタン */}
             <div className="flex gap-4">
               <button
                 onClick={() => {
                   setStep('intro');
                   setSelectedCards([]);
                   setInterpretation('');
+                  setRevealedCards([false, false, false]);
                 }}
                 className="px-6 py-3 bg-purple-600 rounded-full font-semibold hover:bg-purple-700 transition flex items-center gap-2"
               >
@@ -427,6 +460,13 @@ export default function TarotPage() {
         }
         .animate-shuffle {
           animation: shuffle 0.5s ease-in-out infinite;
+        }
+        @keyframes fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.5s ease-out;
         }
       `}</style>
     </div>

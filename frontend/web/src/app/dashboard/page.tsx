@@ -5,7 +5,20 @@ import { useRouter } from 'next/navigation';
 import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Sparkles, TrendingUp, Calendar, Heart, Briefcase, DollarSign, Activity, Users } from 'lucide-react';
+import { 
+  Sparkles, TrendingUp, Calendar, Heart, Briefcase, 
+  DollarSign, Activity, Users, LineChart as LineChartIcon 
+} from 'lucide-react';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts';
 
 interface Reading {
   id: string;
@@ -32,7 +45,6 @@ export default function DashboardPage() {
   const [readingHistory, setReadingHistory] = useState<Reading[]>([]);
   const [authReady, setAuthReady] = useState(false);
 
-  // デフォルトのパラメータ
   const defaultParameters = {
     love: 70,
     career: 70,
@@ -61,7 +73,6 @@ export default function DashboardPage() {
     try {
       setLoading(true);
 
-      // Firestoreから最新の占い結果を取得
       const readingsRef = collection(db, 'readings');
       const q = query(
         readingsRef,
@@ -84,7 +95,6 @@ export default function DashboardPage() {
       console.log('取得した占い履歴:', readings);
 
       if (readings.length > 0) {
-        // parametersが存在しない場合はデフォルト値を使用
         const latest = readings[0];
         if (!latest.parameters) {
           latest.parameters = defaultParameters;
@@ -92,8 +102,6 @@ export default function DashboardPage() {
         setLatestReading(latest);
         setReadingHistory(readings);
       } else {
-        console.log('占い履歴なし - LocalStorageを確認');
-        // LocalStorageからも確認
         const localHistory = localStorage.getItem('tarot-history');
         if (localHistory) {
           const parsed = JSON.parse(localHistory);
@@ -148,6 +156,18 @@ export default function DashboardPage() {
     growth: '#f97316'
   };
 
+  // グラフ用データの作成
+  const chartData = readingHistory.map((reading, index) => {
+    const date = reading.createdAt?.seconds 
+      ? new Date(reading.createdAt.seconds * 1000)
+      : new Date(reading.createdAt);
+    
+    return {
+      date: date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
+      ...reading.parameters
+    };
+  }).reverse(); // 古い順に並べ替え
+
   if (loading || !authReady) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
@@ -189,7 +209,6 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
       <div className="max-w-6xl mx-auto">
         
-        {/* ヘッダー */}
         <div className="mb-8 pt-6">
           <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
             ダッシュボード
@@ -197,7 +216,7 @@ export default function DashboardPage() {
           <p className="text-gray-600">あなたの運勢と成長の記録</p>
         </div>
 
-        {/* 最新の占い結果カード */}
+        {/* 最新の占い結果 */}
         <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -255,6 +274,88 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* 運勢の推移グラフ */}
+        {readingHistory.length > 1 && (
+          <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+            <div className="flex items-center gap-2 mb-6">
+              <LineChartIcon className="w-6 h-6 text-purple-600" />
+              <h2 className="text-2xl font-bold text-gray-800">運勢の推移</h2>
+            </div>
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis 
+                  dataKey="date" 
+                  tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
+                />
+                <YAxis 
+                  domain={[0, 100]}
+                  tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
+                />
+                <Tooltip 
+                  formatter={(value: number) => `${value}点`}
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="love"
+                  stroke={parameterColors.love}
+                  strokeWidth={2}
+                  name="恋愛運"
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="career"
+                  stroke={parameterColors.career}
+                  strokeWidth={2}
+                  name="仕事運"
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="money"
+                  stroke={parameterColors.money}
+                  strokeWidth={2}
+                  name="金運"
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="health"
+                  stroke={parameterColors.health}
+                  strokeWidth={2}
+                  name="健康運"
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="social"
+                  stroke={parameterColors.social}
+                  strokeWidth={2}
+                  name="対人運"
+                  dot={{ r: 4 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="growth"
+                  stroke={parameterColors.growth}
+                  strokeWidth={2}
+                  name="成長運"
+                  dot={{ r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* クイックアクション */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
