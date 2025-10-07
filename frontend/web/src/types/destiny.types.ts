@@ -10,10 +10,12 @@ export interface DestinyParameters {
 }
 
 export interface DailyFortune {
-  fortune: number;     // 総合運 (1-100)
-  message: string;     // メッセージ
-  luckyColor: string;  // ラッキーカラー
-  luckyNumber: number; // ラッキーナンバー
+  fortune: number;      // 総合運 (1-100)
+  message: string;      // メッセージ
+  luckyColor: string;   // ラッキーカラー
+  luckyNumber: number;  // ラッキーナンバー
+  luckyItem?: string;   // ラッキーアイテム（オプショナル）
+  advice?: string;      // アドバイス（オプショナル）
 }
 
 // タロットカードのデータ
