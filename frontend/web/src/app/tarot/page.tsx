@@ -1,280 +1,76 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
-import { saveTarotReading } from '@/lib/services/destiny.service';
 import { majorArcana, calculateParametersFromCards } from '@/data/tarot-cards';
 import { Sparkles, RefreshCw, ArrowRight, Heart, Briefcase, DollarSign, Star } from 'lucide-react';
 import Image from 'next/image';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
-// カテゴリの型定義
 type TarotCategory = 'general' | 'love' | 'career' | 'money';
 
 export default function TarotPage() {
   const router = useRouter();
-  const { user } = useAuth();
   const [step, setStep] = useState<'intro' | 'shuffle' | 'select' | 'reading' | 'result'>('intro');
   const [selectedCards, setSelectedCards] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<TarotCategory>('general');  // 型を修正
+  const [selectedCategory, setSelectedCategory] = useState<TarotCategory>('general');
   const [isShuffling, setIsShuffling] = useState(false);
   const [interpretation, setInterpretation] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   const categories: Array<{ id: TarotCategory; label: string; icon: any; color: string }> = [
     { id: 'general', label: '総合運', icon: Star, color: 'from-purple-500 to-pink-500' },
     { id: 'love', label: '恋愛運', icon: Heart, color: 'from-pink-500 to-red-500' },
     { id: 'career', label: '仕事運', icon: Briefcase, color: 'from-blue-500 to-cyan-500' },
-    { id: 'money', label: '金運', icon: DollarSign, color: 'from-green-500 to-emerald-500' },
+    { id: 'money', label: '金運', icon: DollarSign, color: 'from-yellow-500 to-orange-500' }
   ];
 
-  // カードをシャッフル
-  const shuffleCards = () => {
-    setIsShuffling(true);
-    setTimeout(() => {
-      setIsShuffling(false);
-      setStep('select');
-    }, 2000);
-  };
-
-  // カードを選択
-  const selectCard = (index: number) => {
-    if (selectedCards.length >= 3) return;
-    
-    const randomCard = majorArcana[Math.floor(Math.random() * majorArcana.length)];
-    const newCard = {
-      ...randomCard,
-      position: selectedCards.length,
-      isReversed: Math.random() > 0.5
-    };
-    
-    const newSelectedCards = [...selectedCards, newCard];
-    setSelectedCards(newSelectedCards);
-    
-    // 3枚選択完了したら自動的にAI解釈へ
-    if (newSelectedCards.length === 3) {
-      setTimeout(() => {
-        setStep('reading');
-        getInterpretation(newSelectedCards);
-      }, 500);
-    }
-  };
-
-  // API応答を受け取った後に追加
-  const saveToHistory = (data: any, selectedCards: any[], selectedCategory: string) => {
-    const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
-    const newEntry = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      cards: selectedCards,
-      category: selectedCategory,
-      interpretation: data.interpretation,
-      createdAt: new Date().toISOString()
-    };
-    history.unshift(newEntry);
-    if (history.length > 50) history.splice(50);
-    localStorage.setItem('tarot-history', JSON.stringify(history));
-  };
-
-  // AI解釈を取得（強化版）
-  const getInterpretation = async (cards: any[]) => {
-    setLoading(true);
-    try {
-      if (process.env.NEXT_PUBLIC_USE_AI !== 'false') {
-        const response = await fetch('/api/divination/tarot', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            cards: selectedCards,
-            category: selectedCategory
-          })
+  // 認証の初期化
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        // 認証状態を監視
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+          if (!user) {
+            // ユーザーがいなければ匿名認証
+            console.log('匿名認証を開始...');
+            await signInAnonymously(auth);
+          } else {
+            console.log('認証済み:', user.uid);
+          }
+          setAuthReady(true);
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          setInterpretation(data.interpretation);
-          // ここで履歴保存
-          saveToHistory(data, selectedCards, selectedCategory);
-        } else {
-          setInterpretation(generateDetailedLocalInterpretation(cards));
-        }
-      } else {
-        setInterpretation(generateDetailedLocalInterpretation(cards));
+        return () => unsubscribe();
+      } catch (error) {
+        console.error('認証エラー:', error);
+        setAuthReady(true); // エラーでも続行
       }
+    };
 
-      setStep('result');
-    } catch (error) {
-      console.error('Failed to get interpretation:', error);
-      setInterpretation(generateDetailedLocalInterpretation(cards));
-      setStep('result');
-    } finally {
-      setLoading(false);
-    }
-  };
+    initAuth();
+  }, []);
 
-  // 詳細なローカル解釈生成（2000文字以上）
-  const generateDetailedLocalInterpretation = (cards: any[]) => {
-    const categoryLabel = categories.find(c => c.id === selectedCategory)?.label || '総合運';
-    const past = cards[0];
-    const present = cards[1];
-    const future = cards[2];
-    
-    return `━━━━━━━━━━━━━━━━━
-🌟 ${categoryLabel}の詳細占い結果
-━━━━━━━━━━━━━━━━━
-
-あなたが選んだ3枚のカードが、${categoryLabel}における重要なメッセージを伝えています。
-
-━━━━━━━━━━━━━━━━━
-⏰ 過去：${past.nameJa}${past.isReversed ? '（逆位置）' : '（正位置）'}
-━━━━━━━━━━━━━━━━━
-
-【カードの意味】
-${past.meaning}
-
-【過去の影響】
-${past.nameJa}のカードは、あなたの過去における${categoryLabel}の基盤を示しています。
-${past.isReversed ? 
-  'このカードが逆位置で出たことは、過去に何らかの課題や未解決の問題があったことを示唆しています。しかし、それは成長のための重要な経験でした。' : 
-  'このカードが正位置で出たことは、過去の経験が今のあなたの強みになっていることを示しています。'}
-
-このカードが示すのは、${past.meaning.split('、')[0]}という経験を通じて、あなたが学んできたことです。
-過去のこの経験は、現在のあなたの${categoryLabel}に深い影響を与えており、それは決して無駄ではありませんでした。
-むしろ、これらの経験があったからこそ、今のあなたがあるのです。
-
-━━━━━━━━━━━━━━━━━
-🌸 現在：${present.nameJa}${present.isReversed ? '（逆位置）' : '（正位置）'}
-━━━━━━━━━━━━━━━━━
-
-【カードの意味】
-${present.meaning}
-
-【現在の状況】
-${present.nameJa}は、あなたの${categoryLabel}の現在地を明確に示しています。
-${present.isReversed ? 
-  '逆位置であることから、現在何らかの調整や見直しが必要な時期にあることがわかります。これは決してネガティブな意味ではなく、むしろ成長のチャンスです。' : 
-  '正位置であることから、現在のあなたのエネルギーが正しい方向に向かっていることがわかります。'}
-
-特に注目すべきは、${present.meaning.split('、')[1]}というテーマです。
-今この瞬間、あなたは${categoryLabel}において重要な転換期にいます。
-${selectedCategory === 'love' ? '愛と人間関係' : 
-  selectedCategory === 'career' ? '仕事とキャリア' : 
-  selectedCategory === 'money' ? '経済と豊かさ' : 
-  '人生全体'}の面で、新たな可能性が開かれようとしています。
-
-現在のエネルギーを最大限に活用するためには、${present.meaning.split('、')[2]}を意識することが大切です。
-
-━━━━━━━━━━━━━━━━━
-🔮 未来：${future.nameJa}${future.isReversed ? '（逆位置）' : '（正位置）'}
-━━━━━━━━━━━━━━━━━
-
-【カードの意味】
-${future.meaning}
-
-【未来の可能性】
-${future.nameJa}が未来の位置に出たことは、非常に興味深い展開を示唆しています。
-${future.isReversed ? 
-  '逆位置は、予想外の展開や違った形での成就を意味します。柔軟な姿勢で臨むことが成功の鍵となるでしょう。' : 
-  '正位置は、あなたの努力が実を結び、望む方向へと進んでいくことを示しています。'}
-
-このカードが示す${future.meaning.split('、')[0]}というテーマは、あなたの${categoryLabel}における到達点を表しています。
-近い将来、${selectedCategory === 'love' ? '素晴らしい出会いや関係の深まり' : 
-  selectedCategory === 'career' ? '仕事での大きな成果や新たなチャンス' : 
-  selectedCategory === 'money' ? '経済的な安定や予期せぬ収入' : 
-  '人生における重要な達成'}が期待できます。
-
-ただし、この未来は確定的なものではなく、あなたの選択と行動によって形作られていきます。
-
-━━━━━━━━━━━━━━━━━
-💫 3枚のカードが紡ぐストーリー
-━━━━━━━━━━━━━━━━━
-
-過去の${past.nameJa}、現在の${present.nameJa}、そして未来の${future.nameJa}。
-この3枚のカードの組み合わせは、あなたの${categoryLabel}における成長の物語を描いています。
-
-過去の${past.meaning.split('、')[0]}から始まり、
-現在の${present.meaning.split('、')[0]}を経て、
-未来の${future.meaning.split('、')[0]}へと向かう流れは、
-まさに人生の自然な進化のプロセスを表しています。
-
-特に重要なのは、これら3枚のカードが示すエネルギーの変化です。
-あなたは確実に前進しており、${categoryLabel}において新たなステージへと移行しようとしています。
-
-━━━━━━━━━━━━━━━━━
-🎯 具体的なアドバイス
-━━━━━━━━━━━━━━━━━
-
-カードからのメッセージを日常生活に活かすために、以下のことを心がけてください：
-
-1. **今週中に取るべき行動**
-   ${selectedCategory === 'love' ? '大切な人との時間を意識的に作り、感謝の気持ちを言葉にして伝えましょう。' : 
-     selectedCategory === 'career' ? '先延ばしにしていたプロジェクトや課題に着手し、小さな一歩でも前進させましょう。' : 
-     selectedCategory === 'money' ? '収支を見直し、将来のための貯蓄計画を立てましょう。' : 
-     '自分の本当の願いを明確にし、それに向けた具体的な計画を立てましょう。'}
-
-2. **意識すべきポイント**
-   現在のカード${present.nameJa}が示すように、${present.meaning.split('、')[1]}を大切にすることです。
-   これは今のあなたに最も必要なエネルギーです。
-
-3. **避けるべきこと**
-   ${past.isReversed || present.isReversed || future.isReversed ? 
-     '過度な期待や焦りは避け、自然な流れに身を任せることも大切です。' : 
-     '現状に満足しすぎず、常に成長と進化を求める姿勢を忘れないでください。'}
-
-━━━━━━━━━━━━━━━━━
-🍀 開運ポイント
-━━━━━━━━━━━━━━━━━
-
-**ラッキーカラー**: ${['紫', '金', '青', '緑', '赤', '白'][Math.floor(Math.random() * 6)]}
-この色を身につけたり、意識的に取り入れることで、運気の流れが良くなります。
-
-**ラッキーアイテム**: ${['クリスタル', '香り（お香やアロマ）', '植物', '手帳', '音楽', 'キャンドル'][Math.floor(Math.random() * 6)]}
-このアイテムを活用することで、カードのエネルギーとより深くつながることができます。
-
-**パワータイム**: ${['朝の時間', '午後3時頃', '夕暮れ時', '満月の夜', '新月の日', '週末の午前中'][Math.floor(Math.random() * 6)]}
-この時間帯に重要な決断や行動を起こすと良いでしょう。
-
-**開運の方位**: ${['北', '南', '東', '西', '北東', '南西'][Math.floor(Math.random() * 6)]}
-この方角を意識して行動すると、良い流れを引き寄せやすくなります。
-
-━━━━━━━━━━━━━━━━━
-✨ 最後のメッセージ
-━━━━━━━━━━━━━━━━━
-
-タロットカードは、あなたの内なる知恵と宇宙のエネルギーをつなぐ架け橋です。
-今回の占いで示されたメッセージは、あなたの潜在意識がすでに知っていることを確認するものでもあります。
-
-${categoryLabel}において、あなたは正しい道を歩んでいます。
-自信を持って、カードが示す方向へと進んでください。
-運命はあなたの味方です。
-
-この占いが、あなたの${categoryLabel}における素晴らしい未来への道しるべとなりますように。
-
-🌙 占い師より愛を込めて`;
-  };
-
-  // カード画像名を取得
-  const getCardImageName = (cardName: string) => {
-    const imageMap: Record<string, string> = {
-      '愚者': '0-fool',
-      '魔術師': '1-magician',
-      '女教皇': '2-high-priestess',
-      '女帝': '3-empress',
-      '皇帝': '4-emperor',
-      '教皇': '5-hierophant',
-      '恋人': '6-lovers',
-      '戦車': '7-chariot',
-      '力': '8-strength',
-      '隠者': '9-hermit',
+  // カード画像のマッピング
+  const getCardImagePath = (cardName: string): string => {
+    const imageMap: { [key: string]: string } = {
+      '愚者': '00-fool',
+      '魔術師': '01-magician',
+      '女教皇': '02-high-priestess',
+      '女帝': '03-empress',
+      '皇帝': '04-emperor',
+      '教皇': '05-hierophant',
+      '恋人': '06-lovers',
+      '戦車': '07-chariot',
+      '力': '08-strength',
+      '隠者': '09-hermit',
       '運命の輪': '10-wheel-of-fortune',
       '正義': '11-justice',
-      '吊るされた男': '12-hanged-man',
+      '吊された男': '12-hanged-man',
       '死神': '13-death',
       '節制': '14-temperance',
       '悪魔': '15-devil',
@@ -288,82 +84,171 @@ ${categoryLabel}において、あなたは正しい道を歩んでいます。
     return imageMap[cardName];
   };
 
-  // LocalStorage保存用
+  // LocalStorage保存
   const saveToLocalStorage = (readingData: any) => {
-    const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
-    const newEntry = {
-      ...readingData,
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      createdAt: new Date().toISOString()
-    };
-    history.unshift(newEntry);
-    if (history.length > 50) history.splice(50);
-    localStorage.setItem('tarot-history', JSON.stringify(history));
+    try {
+      const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
+      const newEntry = {
+        ...readingData,
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+      history.unshift(newEntry);
+      if (history.length > 50) history.splice(50);
+      localStorage.setItem('tarot-history', JSON.stringify(history));
+      console.log('✅ LocalStorageに保存成功');
+    } catch (error) {
+      console.error('LocalStorage保存エラー:', error);
+    }
   };
 
-  // FirestoreとLocalStorageに保存
-  const saveReading = async (interpretation: string) => {
+  // Firestore保存（修正版）
+  const saveReading = async () => {
+    if (saving) return;
+    
+    setSaving(true);
+    console.log('=== 保存開始 ===');
+
     try {
-      // 認証チェック（匿名認証でもOK）
-      let currentUser = auth.currentUser;
-      if (!currentUser) {
-        // 匿名認証
-        const result = await signInAnonymously(auth);
-        currentUser = result.user;
+      // 1. 認証確認
+      if (!authReady) {
+        console.log('認証が未完了です。待機中...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      // 保存データを完全に定義
+      let currentUser = auth.currentUser;
+      console.log('現在のユーザー:', currentUser?.uid);
+
+      if (!currentUser) {
+        console.log('ユーザーがいないため匿名認証を実行...');
+        const result = await signInAnonymously(auth);
+        currentUser = result.user;
+        console.log('匿名認証成功:', currentUser.uid);
+      }
+
+      // 2. データ検証
+      if (!interpretation) {
+        console.error('解釈が空です');
+        alert('占い結果が生成されていません');
+        setSaving(false);
+        return;
+      }
+
+      if (!selectedCards || selectedCards.length === 0) {
+        console.error('カードが選択されていません');
+        alert('カードを選択してください');
+        setSaving(false);
+        return;
+      }
+
+      // 3. 保存データ作成
       const readingData = {
         userId: currentUser.uid,
-        cards: selectedCards || [],
-        category: selectedCategory || 'general',
-        interpretation: interpretation || '',
+        cards: selectedCards.map(card => ({
+          id: card.id,
+          name: card.name,
+          nameJa: card.nameJa,
+          meaning: card.meaning,
+          reversed: card.reversed || false
+        })),
+        interpretation: interpretation,
+        category: selectedCategory,
         createdAt: serverTimestamp(),
         type: 'tarot'
       };
 
-      // Firestoreに保存
-      const docRef = await addDoc(collection(db, 'readings'), readingData);
-      console.log('✅ Firestoreに保存成功:', docRef.id);
+      console.log('保存データ:', readingData);
 
-      // LocalStorageにも保存（オフライン対応）
+      // 4. Firestoreに保存
+      const docRef = await addDoc(collection(db, 'readings'), readingData);
+      console.log('✅ Firestore保存成功:', docRef.id);
+
+      // 5. LocalStorageにも保存
       saveToLocalStorage({
         ...readingData,
-        createdAt: new Date().toISOString() // ローカル用はDate型
+        createdAt: new Date().toISOString()
       });
 
-      // 必要ならダッシュボード等へ遷移
+      // 6. ダッシュボードへ遷移
+      alert('占い結果を保存しました！');
       router.push('/dashboard');
-    } catch (error) {
-      console.error('Firestore保存エラー:', error);
-      // エラー時はLocalStorageのみ
-      saveToLocalStorage({
-        userId: 'local',
-        cards: selectedCards || [],
-        category: selectedCategory || 'general',
-        interpretation: interpretation || '',
-        createdAt: new Date().toISOString(),
-        type: 'tarot'
-      });
-      alert('保存に失敗しました。オフライン履歴にのみ保存されました。');
+
+    } catch (error: any) {
+      console.error('=== 保存エラー ===');
+      console.error('エラー詳細:', error);
+      console.error('エラーコード:', error?.code);
+      console.error('エラーメッセージ:', error?.message);
+      
+      alert(`保存に失敗しました: ${error?.message || '不明なエラー'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4">
-      <div className="max-w-6xl mx-auto">
-        
-        {/* イントロ */}
-        {step === 'intro' && (
+  // カードをシャッフル
+  const handleShuffle = async () => {
+    setIsShuffling(true);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsShuffling(false);
+    setStep('select');
+  };
+
+  // カードを選択
+  const handleSelectCard = (card: any) => {
+    if (selectedCards.length < 3 && !selectedCards.find(c => c.id === card.id)) {
+      const newCards = [...selectedCards, card];
+      setSelectedCards(newCards);
+      
+      if (newCards.length === 3) {
+        setStep('reading');
+        generateReading(newCards);
+      }
+    }
+  };
+
+  // AI解釈生成
+  const generateReading = async (cards: any[]) => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/divination/tarot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cards: cards.map(c => ({
+            name: c.nameJa,
+            meaning: c.meaning,
+            reversed: c.reversed || false
+          })),
+          category: selectedCategory
+        })
+      });
+
+      if (!response.ok) throw new Error('API呼び出しに失敗しました');
+
+      const data = await response.json();
+      setInterpretation(data.interpretation);
+      setStep('result');
+    } catch (error) {
+      console.error('解釈生成エラー:', error);
+      alert('占い結果の生成に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // イントロ画面
+  if (step === 'intro') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4">
+        <div className="max-w-6xl mx-auto">
           <div className="flex flex-col items-center justify-center min-h-[80vh] text-center">
             <Sparkles className="w-16 h-16 mb-6 text-yellow-300 animate-pulse" />
             <h1 className="text-4xl font-bold mb-4">タロット占い</h1>
             <p className="text-xl mb-8 text-purple-200">
               AIが導く、あなたの運命のメッセージ
             </p>
-            
-            {/* カテゴリ選択 */}
+
             <div className="mb-8">
               <p className="mb-4 text-purple-300">占いたい内容を選んでください</p>
               <div className="grid grid-cols-2 gap-4">
@@ -375,8 +260,8 @@ ${categoryLabel}において、あなたは正しい道を歩んでいます。
                       onClick={() => setSelectedCategory(cat.id)}
                       className={`px-6 py-4 rounded-xl font-semibold transition-all transform hover:scale-105 ${
                         selectedCategory === cat.id
-                          ? 'bg-gradient-to-r ' + cat.color + ' shadow-lg scale-105'
-                          : 'bg-purple-800/50 hover:bg-purple-700/50'
+                          ? `bg-gradient-to-r ${cat.color} text-white shadow-lg`
+                          : 'bg-purple-800/50 text-purple-200 hover:bg-purple-700/50'
                       }`}
                     >
                       <Icon className="w-6 h-6 mx-auto mb-2" />
@@ -386,223 +271,145 @@ ${categoryLabel}において、あなたは正しい道を歩んでいます。
                 })}
               </div>
             </div>
-            
+
             <button
               onClick={() => setStep('shuffle')}
-              className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full text-lg font-semibold hover:from-purple-700 hover:to-pink-700 transition transform hover:scale-105"
+              className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-purple-900 rounded-xl font-bold text-lg hover:scale-105 transition-transform"
             >
-              占いを始める
+              カードをシャッフルする
+              <ArrowRight className="inline ml-2" />
             </button>
           </div>
-        )}
-
-        {/* シャッフル */}
-        {step === 'shuffle' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh]">
-            <h2 className="text-3xl font-bold mb-8">カードをシャッフル中...</h2>
-            <div className="relative w-48 h-72 mb-8">
-              {[...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`absolute inset-0 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg shadow-2xl transform ${
-                    isShuffling ? 'animate-shuffle' : ''
-                  }`}
-                  style={{
-                    transform: `rotate(${i * 5 - 10}deg) translateX(${i * 2}px)`,
-                    zIndex: 5 - i
-                  }}
-                >
-                  <div className="w-full h-full rounded-lg border-2 border-purple-300 opacity-50" />
-                </div>
-              ))}
-            </div>
-            {!isShuffling && (
-              <button
-                onClick={shuffleCards}
-                className="px-6 py-3 bg-yellow-500 text-purple-900 rounded-full font-semibold hover:bg-yellow-400 transition"
-              >
-                シャッフルする
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* カード選択 */}
-        {step === 'select' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh]">
-            <h2 className="text-3xl font-bold mb-4">カードを3枚選んでください</h2>
-            <p className="text-purple-200 mb-8">{selectedCards.length}/3 枚選択済み</p>
-            
-            <div className="grid grid-cols-7 gap-2 mb-8">
-              {[...Array(22)].map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => selectCard(i)}
-                  disabled={selectedCards.length >= 3}
-                  className="w-16 h-24 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg shadow-lg hover:shadow-2xl transition-all transform hover:scale-110 hover:-translate-y-2 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  <div className="w-full h-full rounded-lg border border-purple-300 opacity-50" />
-                </button>
-              ))}
-            </div>
-
-            {selectedCards.length > 0 && (
-              <div className="flex gap-4">
-                {['過去', '現在', '未来'].map((label, i) => (
-                  <div key={i} className="text-center">
-                    <p className="text-sm mb-2">{label}</p>
-                    <div className={`w-20 h-32 rounded-lg border-2 ${
-                      selectedCards[i] 
-                        ? 'bg-gradient-to-br from-yellow-400 to-orange-500 border-yellow-400 shadow-lg' 
-                        : 'border-dashed border-purple-400'
-                    }`}>
-                      {selectedCards[i] && (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="text-center p-2">
-                            <p className="text-xs text-purple-900 font-bold">
-                              {selectedCards[i].nameJa}
-                            </p>
-                            {selectedCards[i].isReversed && (
-                              <p className="text-xs text-purple-700 mt-1">逆位置</p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* AI解釈中 */}
-        {step === 'reading' && loading && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh]">
-            <div className="mb-8">
-              <div className="flex gap-8">
-                {selectedCards.map((card, i) => {
-                  const imageName = getCardImageName(card.nameJa);
-                  return (
-                    <div key={i} className="text-center">
-                      <p className="text-lg mb-2 text-yellow-300">{['過去', '現在', '未来'][i]}</p>
-                      <div className="w-32 h-48 rounded-lg shadow-2xl overflow-hidden">
-                        {imageName ? (
-                          <img
-                            src={`/tarot-cards/${imageName}.jpg`}
-                            alt={card.nameJa}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center">
-                            <p className="text-purple-900 font-bold">{card.nameJa}</p>
-                          </div>
-                        )}
-                      </div>
-                      <p className="mt-2 text-sm text-purple-200">
-                        {card.isReversed && '逆位置'}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-300 mx-auto mb-4"></div>
-              <p className="text-xl text-purple-200 animate-pulse">
-                AIがカードの意味を解釈中...
-              </p>
-              <p className="text-sm text-purple-300 mt-2">
-                詳細な占い結果を生成しています
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* 結果表示 */}
-        {step === 'result' && !loading && (
-          <div className="flex flex-col items-center py-12">
-            <h2 className="text-3xl font-bold mb-8">
-              {categories.find(c => c.id === selectedCategory)?.label}の占い結果
-            </h2>
-            
-            {/* カード表示 */}
-            <div className="flex gap-8 mb-12">
-              {selectedCards.map((card, i) => {
-                const imageName = getCardImageName(card.nameJa);
-                return (
-                  <div key={i} className="text-center">
-                    <p className="text-lg mb-2 text-yellow-300">{['過去', '現在', '未来'][i]}</p>
-                    <div className="w-32 h-48 rounded-lg shadow-2xl overflow-hidden transform hover:scale-110 transition-transform">
-                      {imageName ? (
-                        <img
-                          src={`/tarot-cards/${imageName}.jpg`}
-                          alt={card.nameJa}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-yellow-400 to-orange-500 p-3">
-                          <div className="w-full h-full rounded border-2 border-yellow-600 flex flex-col items-center justify-center">
-                            <p className="text-xl font-bold text-purple-900">{card.nameJa}</p>
-                            {card.isReversed && <p className="text-xs text-purple-700 mt-1">逆位置</p>}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <p className="mt-2 text-sm text-purple-200">
-                      {card.nameJa}{card.isReversed ? '（逆位置）' : ''}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* AI解釈 */}
-            <div className="max-w-4xl w-full bg-purple-800/50 backdrop-blur rounded-xl p-8 mb-8">
-              <div className="prose prose-invert max-w-none">
-                <div className="whitespace-pre-wrap text-purple-100 leading-relaxed text-lg">
-                  {interpretation}
-                </div>
-              </div>
-            </div>
-
-            {/* アクションボタン */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setStep('intro');
-                  setSelectedCards([]);
-                  setInterpretation('');
-                }}
-                className="px-6 py-3 bg-purple-600 rounded-full font-semibold hover:bg-purple-700 transition flex items-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" />
-                もう一度占う
-              </button>
-              
-              <button
-                onClick={saveReading}
-                disabled={saving}
-                className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-purple-900 rounded-full font-semibold hover:from-yellow-600 hover:to-orange-600 transition flex items-center gap-2 disabled:opacity-50"
-              >
-                {saving ? '保存中...' : '結果を保存'}
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
+    );
+  }
 
-      <style jsx>{`
-        @keyframes shuffle {
-          0%, 100% { transform: translateX(0) rotateZ(0deg); }
-          25% { transform: translateX(-20px) rotateZ(-5deg); }
-          75% { transform: translateX(20px) rotateZ(5deg); }
-        }
-        .animate-shuffle {
-          animation: shuffle 0.5s ease-in-out infinite;
-        }
-      `}</style>
-    </div>
-  );
+  // シャッフル画面
+  if (step === 'shuffle') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4 flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className={`w-20 h-20 mx-auto mb-6 text-yellow-300 ${isShuffling ? 'animate-spin' : ''}`} />
+          <h2 className="text-3xl font-bold mb-4">カードをシャッフル中...</h2>
+          <p className="text-purple-200 mb-8">心を落ち着けて、質問に集中してください</p>
+          {!isShuffling && (
+            <button
+              onClick={handleShuffle}
+              className="px-8 py-4 bg-gradient-to-r from-yellow-400 to-orange-500 text-purple-900 rounded-xl font-bold text-lg hover:scale-105 transition-transform"
+            >
+              シャッフル開始
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // カード選択画面
+  if (step === 'select') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-8">3枚のカードを選んでください</h2>
+          <p className="text-center text-purple-200 mb-8">
+            選択済み: {selectedCards.length}/3
+          </p>
+
+          <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {majorArcana.map((card) => (
+              <div
+                key={card.id}
+                onClick={() => handleSelectCard(card)}
+                className={`cursor-pointer transform transition-all hover:scale-105 ${
+                  selectedCards.find(c => c.id === card.id) ? 'opacity-50' : ''
+                }`}
+              >
+                <div className="bg-purple-800/50 rounded-lg p-2">
+                  <Image
+                    src={`/tarot-cards/${getCardImagePath(card.nameJa)}.jpg`}
+                    alt={card.nameJa}
+                    width={120}
+                    height={210}
+                    className="rounded"
+                  />
+                  <p className="text-center mt-2 text-sm">{card.nameJa}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 解釈生成中
+  if (step === 'reading' || loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4 flex items-center justify-center">
+        <div className="text-center">
+          <Sparkles className="w-20 h-20 mx-auto mb-6 text-yellow-300 animate-pulse" />
+          <h2 className="text-3xl font-bold mb-4">カードを読み取り中...</h2>
+          <p className="text-purple-200">AIがあなたの運命を解釈しています</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 結果表示
+  if (step === 'result') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-indigo-900 text-white p-4">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-8">あなたの占い結果</h2>
+
+          <div className="flex justify-center gap-4 mb-8">
+            {selectedCards.map((card, index) => (
+              <div key={card.id} className="text-center">
+                <Image
+                  src={`/tarot-cards/${getCardImagePath(card.nameJa)}.jpg`}
+                  alt={card.nameJa}
+                  width={150}
+                  height={263}
+                  className="rounded-lg shadow-xl"
+                />
+                <p className="mt-2 font-semibold">{card.nameJa}</p>
+                <p className="text-sm text-purple-300">
+                  {index === 0 ? '過去' : index === 1 ? '現在' : '未来'}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-purple-800/50 rounded-xl p-6 mb-8">
+            <h3 className="text-xl font-bold mb-4">解釈</h3>
+            <p className="whitespace-pre-wrap leading-relaxed">{interpretation}</p>
+          </div>
+
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => {
+                setStep('intro');
+                setSelectedCards([]);
+                setInterpretation('');
+              }}
+              className="px-6 py-3 bg-purple-700 hover:bg-purple-600 rounded-lg transition"
+            >
+              もう一度占う
+            </button>
+            
+            <button
+              onClick={saveReading}
+              disabled={saving}
+              className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 text-purple-900 rounded-lg font-bold hover:scale-105 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? '保存中...' : '結果を保存'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
