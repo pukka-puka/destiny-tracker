@@ -1,271 +1,314 @@
-// src/app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { getUserStatistics, getLatestReadings } from '@/lib/services/destiny.service';
-import { DestinyReading, UserStats } from '@/types/destiny.types';
-import ParameterCard from '@/components/dashboard/ParameterCard';
-import RadarChart from '@/components/dashboard/RadarChart';
-import HistoryChart from '@/components/dashboard/HistoryChart';
-import DailyFortune from '@/components/dashboard/DailyFortune';
-import StatsCard from '@/components/dashboard/StatsCard';
-import { Sparkles, Camera, Calendar, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Sparkles, TrendingUp, Calendar, Heart, Briefcase, DollarSign, Activity, Users } from 'lucide-react';
+
+interface Reading {
+  id: string;
+  userId: string;
+  type: string;
+  category: string;
+  interpretation: string;
+  cards?: any[];
+  parameters?: {
+    love: number;
+    career: number;
+    money: number;
+    health: number;
+    social: number;
+    growth: number;
+  };
+  createdAt: any;
+}
 
 export default function DashboardPage() {
-  const { user } = useAuth();
   const router = useRouter();
-  const [todayReading, setTodayReading] = useState<DestinyReading | null>(null);
-  const [lastPalmReading, setLastPalmReading] = useState<DestinyReading | null>(null);
-  const [readingHistory, setReadingHistory] = useState<DestinyReading[]>([]);
-  const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [canReadTarotToday, setCanReadTarotToday] = useState(true);
-  const [canReadPalmThisMonth, setCanReadPalmThisMonth] = useState(true);
+  const [latestReading, setLatestReading] = useState<Reading | null>(null);
+  const [readingHistory, setReadingHistory] = useState<Reading[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+
+  // デフォルトのパラメータ
+  const defaultParameters = {
+    love: 70,
+    career: 70,
+    money: 70,
+    health: 70,
+    social: 70,
+    growth: 70
+  };
 
   useEffect(() => {
-    if (user) {
-      loadDashboardData();
-    }
-  }, [user]);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        console.log('認証済みユーザー:', user.uid);
+        setAuthReady(true);
+        await loadDashboardData(user.uid);
+      } else {
+        console.log('未認証 - ログインページへ');
+        router.push('/');
+      }
+    });
 
-  const loadDashboardData = async () => {
-    if (!user) return;
+    return () => unsubscribe();
+  }, [router]);
 
-    setLoading(true);
+  const loadDashboardData = async (userId: string) => {
     try {
-      const [history, stats] = await Promise.all([
-        getLatestReadings(user.uid, undefined, 30),
-        getUserStatistics(user.uid)
-      ]);
+      setLoading(true);
 
-      // 今日のタロット占いを確認
-      const todayTarot = history.find((r: DestinyReading) => {
-        const readingDate = new Date(r.createdAt);
-        const today = new Date();
-        return r.readingType === 'daily-tarot' &&
-               readingDate.toDateString() === today.toDateString();
+      // Firestoreから最新の占い結果を取得
+      const readingsRef = collection(db, 'readings');
+      const q = query(
+        readingsRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(10)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const readings: Reading[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        readings.push({
+          id: doc.id,
+          ...data
+        } as Reading);
       });
 
-      // 最新の手相占いを取得
-      const palmReading = history.find((r: DestinyReading) => r.readingType === 'palm');
+      console.log('取得した占い履歴:', readings);
 
-      // 今月の手相占いがあるか確認
-      const thisMonth = new Date();
-      const hasPalmThisMonth = history.some((r: DestinyReading) => {
-        const readingDate = new Date(r.createdAt);
-        return r.readingType === 'palm' &&
-               readingDate.getMonth() === thisMonth.getMonth() &&
-               readingDate.getFullYear() === thisMonth.getFullYear();
-      });
-
-      // 最新の占い結果を設定（今日のタロットまたは最新の占い）
-      setTodayReading(todayTarot || history[0] || null);
-      setLastPalmReading(palmReading || null);
-      setReadingHistory(history);
-      setUserStats(stats);
-      setCanReadTarotToday(!todayTarot);
-      setCanReadPalmThisMonth(!hasPalmThisMonth);
+      if (readings.length > 0) {
+        // parametersが存在しない場合はデフォルト値を使用
+        const latest = readings[0];
+        if (!latest.parameters) {
+          latest.parameters = defaultParameters;
+        }
+        setLatestReading(latest);
+        setReadingHistory(readings);
+      } else {
+        console.log('占い履歴なし - LocalStorageを確認');
+        // LocalStorageからも確認
+        const localHistory = localStorage.getItem('tarot-history');
+        if (localHistory) {
+          const parsed = JSON.parse(localHistory);
+          if (parsed.length > 0) {
+            const latest = parsed[0];
+            if (!latest.parameters) {
+              latest.parameters = defaultParameters;
+            }
+            setLatestReading(latest);
+            setReadingHistory(parsed);
+          }
+        }
+      }
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('ダッシュボードデータ読み込みエラー:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTarotReading = () => {
-    router.push('/tarot');
+  const categoryLabels: { [key: string]: string } = {
+    general: '総合運',
+    love: '恋愛運',
+    career: '仕事運',
+    money: '金運'
   };
 
-  const handlePalmReading = () => {
-    router.push('/palm');
+  const parameterIcons: { [key: string]: any } = {
+    love: Heart,
+    career: Briefcase,
+    money: DollarSign,
+    health: Activity,
+    social: Users,
+    growth: TrendingUp
   };
 
-  if (loading) {
+  const parameterLabels: { [key: string]: string } = {
+    love: '恋愛運',
+    career: '仕事運',
+    money: '金運',
+    health: '健康運',
+    social: '対人運',
+    growth: '成長運'
+  };
+
+  const parameterColors: { [key: string]: string } = {
+    love: '#ec4899',
+    career: '#3b82f6',
+    money: '#eab308',
+    health: '#22c55e',
+    social: '#a855f7',
+    growth: '#f97316'
+  };
+
+  if (loading || !authReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">読み込み中...</p>
+          <Sparkles className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
+          <p className="text-purple-600">読み込み中...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (!latestReading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-xl text-gray-600">ログインしてください</p>
-          <button
-            onClick={() => router.push('/login')}
-            className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-          >
-            ログインページへ
-          </button>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
+        <div className="max-w-4xl mx-auto pt-20">
+          <div className="bg-white rounded-2xl p-12 text-center shadow-lg">
+            <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-6" />
+            <h2 className="text-3xl font-bold text-gray-800 mb-4">
+              まだ占いをしていません
+            </h2>
+            <p className="text-gray-600 mb-8">
+              最初の占いをして、あなたの運命を知りましょう！
+            </p>
+            <button
+              onClick={() => router.push('/tarot')}
+              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold hover:from-purple-700 hover:to-pink-700 transition"
+            >
+              タロット占いを始める
+            </button>
+          </div>
         </div>
       </div>
     );
   }
+
+  const parameters = latestReading.parameters || defaultParameters;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
+      <div className="max-w-6xl mx-auto">
+        
         {/* ヘッダー */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
-          <h1 className="text-2xl font-bold mb-2">ダッシュボード</h1>
-          <p>あなたの運勢と成長の記録</p>
+        <div className="mb-8 pt-6">
+          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+            ダッシュボード
+          </h1>
+          <p className="text-gray-600">あなたの運勢と成長の記録</p>
         </div>
 
-        {/* アクションカード */}
-        <div className="grid md:grid-cols-2 gap-4">
-          {/* タロット占い */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <Sparkles className="w-8 h-8 text-purple-600" />
-              <div>
-                <h2 className="text-lg font-semibold">今日のタロット占い</h2>
-                <p className="text-sm text-gray-600">AI が導く運命のメッセージ</p>
-              </div>
+        {/* 最新の占い結果カード */}
+        <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                最新の占い結果
+              </h2>
+              <p className="text-gray-600">
+                {categoryLabels[latestReading.category || 'general']} - {new Date(latestReading.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('ja-JP')}
+              </p>
             </div>
-            
-            {canReadTarotToday ? (
-              <button
-                onClick={handleTarotReading}
-                className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition"
-              >
-                占いを始める
-              </button>
-            ) : (
-              <div className="text-center py-3 bg-gray-100 rounded-lg">
-                <p className="text-gray-600">本日の占い済み ✨</p>
-                <p className="text-xs text-gray-400 mt-1">明日また占えます</p>
-              </div>
-            )}
-
-            {todayReading?.tarotReading && (
-              <div className="mt-4 p-3 bg-purple-50 rounded-lg">
-                <p className="text-sm text-gray-700 line-clamp-2">
-                  {todayReading.tarotReading.interpretation}
-                </p>
-              </div>
-            )}
+            <Sparkles className="w-8 h-8 text-yellow-500" />
           </div>
 
-          {/* 手相占い */}
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <div className="flex items-center gap-3 mb-4">
-              <Camera className="w-8 h-8 text-indigo-600" />
-              <div>
-                <h2 className="text-lg font-semibold">AI手相占い</h2>
-                <p className="text-sm text-gray-600">月1回の詳細診断</p>
-              </div>
-            </div>
-            
-            {canReadPalmThisMonth ? (
-              <button
-                onClick={handlePalmReading}
-                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-lg hover:from-indigo-700 hover:to-blue-700 transition"
-              >
-                手相で占う
-              </button>
-            ) : (
-              <div className="text-center py-3 bg-gray-100 rounded-lg">
-                <p className="text-gray-600">今月の占い済み 🖐️</p>
-                <p className="text-xs text-gray-400 mt-1">来月また占えます</p>
-              </div>
-            )}
+          {/* 運勢パラメーター */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            {Object.entries(parameters).map(([key, value]) => {
+              const Icon = parameterIcons[key];
+              const color = parameterColors[key];
+              const label = parameterLabels[key];
 
-            {lastPalmReading?.palmReading && (
-              <div className="mt-4 p-3 bg-indigo-50 rounded-lg">
-                <p className="text-sm text-gray-700">
-                  {lastPalmReading.palmReading.analysis?.summary || '手相診断結果があります'}
-                </p>
-              </div>
-            )}
+              return (
+                <div key={key} className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {Icon && <Icon className="w-5 h-5" style={{ color }} />}
+                    <span className="text-sm font-semibold text-gray-700">{label}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{
+                        width: `${value}%`,
+                        backgroundColor: color
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold" style={{ color }}>
+                      {value}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {value >= 80 ? '絶好調' : value >= 60 ? '好調' : value >= 40 ? '普通' : '要注意'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+
+          {/* 解釈プレビュー */}
+          {latestReading.interpretation && (
+            <div className="bg-purple-50 rounded-xl p-4">
+              <p className="text-gray-700 line-clamp-3">
+                {latestReading.interpretation}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* 今日の運勢 */}
-        {todayReading?.daily && (
-          <DailyFortune fortune={todayReading.daily} />
-        )}
+        {/* クイックアクション */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <button
+            onClick={() => router.push('/tarot')}
+            className="bg-gradient-to-br from-purple-500 to-pink-500 text-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all group"
+          >
+            <Sparkles className="w-12 h-12 mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-2xl font-bold mb-2">今日のタロット占い</h3>
+            <p className="text-purple-100">AIが導く運命のメッセージ</p>
+          </button>
 
-        {/* パラメーターカード */}
-        {todayReading && (
-          <div>
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              今日のパラメーター
+          <button
+            onClick={() => router.push('/palm')}
+            className="bg-gradient-to-br from-blue-500 to-cyan-500 text-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all group"
+          >
+            <Activity className="w-12 h-12 mb-4 group-hover:scale-110 transition-transform" />
+            <h3 className="text-2xl font-bold mb-2">AI手相占い</h3>
+            <p className="text-blue-100">月間の詳細鑑定</p>
+          </button>
+        </div>
+
+        {/* 占い履歴 */}
+        {readingHistory.length > 0 && (
+          <div className="bg-white rounded-2xl p-8 shadow-lg">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
+              <Calendar className="w-6 h-6" />
+              占い履歴
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {Object.entries(todayReading.parameters).map(([key, value]) => (
-                <ParameterCard
-                  key={key}
-                  parameter={key as keyof typeof todayReading.parameters}
-                  value={value}
-                />
+            <div className="space-y-4">
+              {readingHistory.slice(0, 5).map((reading) => (
+                <div
+                  key={reading.id}
+                  className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl hover:shadow-md transition-shadow cursor-pointer"
+                >
+                  <div>
+                    <p className="font-semibold text-gray-800">
+                      {categoryLabels[reading.category || 'general']}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(reading.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('ja-JP')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {reading.parameters && (
+                      <span className="text-2xl font-bold text-purple-600">
+                        {Math.round(Object.values(reading.parameters).reduce((a, b) => a + b, 0) / 6)}
+                      </span>
+                    )}
+                    <TrendingUp className="w-5 h-5 text-purple-600" />
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* チャートセクション */}
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* レーダーチャート */}
-          {todayReading && (
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4">運勢バランス</h2>
-              <RadarChart data={todayReading.parameters} />
-            </div>
-          )}
-
-          {/* 統計カード */}
-          {userStats && (
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4">統計情報</h2>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-600">総占い回数</span>
-                  <span className="text-2xl font-bold text-purple-600">
-                    {userStats.totalReadings}回
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <p className="text-xs text-gray-600">タロット</p>
-                    <p className="text-lg font-semibold text-purple-600">
-                      {userStats.tarotReadings || 0}回
-                    </p>
-                  </div>
-                  <div className="p-3 bg-indigo-50 rounded-lg">
-                    <p className="text-xs text-gray-600">手相</p>
-                    <p className="text-lg font-semibold text-indigo-600">
-                      {userStats.palmReadings || 0}回
-                    </p>
-                  </div>
-                </div>
-                
-                {userStats.currentStreak > 0 && (
-                  <div className="p-3 bg-yellow-50 rounded-lg">
-                    <p className="text-xs text-gray-600">連続日数</p>
-                    <p className="text-lg font-semibold text-yellow-600">
-                      {userStats.currentStreak}日 🔥
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 履歴チャート */}
-        {readingHistory.length > 0 && (
-          <div className="bg-white rounded-xl p-6 shadow-lg">
-            <h2 className="text-xl font-semibold mb-4">運勢の推移</h2>
-            <HistoryChart readings={readingHistory} />
           </div>
         )}
       </div>
