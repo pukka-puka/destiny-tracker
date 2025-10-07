@@ -67,12 +67,14 @@ export default function TarotPage() {
     try {
       // APIキーがある場合はClaude APIを使用
       if (process.env.NEXT_PUBLIC_USE_AI !== 'false') {
-        const response = await fetch('/api/tarot', {
+        const response = await fetch('/api/divination/tarot', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            cards,
-            category: selectedCategory 
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cards: selectedCards,
+            category: selectedCategory
           })
         });
         
