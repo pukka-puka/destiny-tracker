@@ -7,6 +7,9 @@ import { saveTarotReading } from '@/lib/services/destiny.service';
 import { majorArcana, calculateParametersFromCards } from '@/data/tarot-cards';
 import { Sparkles, RefreshCw, ArrowRight, Heart, Briefcase, DollarSign, Star } from 'lucide-react';
 import Image from 'next/image';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase';
+import { signInAnonymously } from 'firebase/auth';
 
 // カテゴリの型定義
 type TarotCategory = 'general' | 'love' | 'career' | 'money';
@@ -61,11 +64,26 @@ export default function TarotPage() {
     }
   };
 
+  // API応答を受け取った後に追加
+  const saveToHistory = (data: any, selectedCards: any[], selectedCategory: string) => {
+    const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
+    const newEntry = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      cards: selectedCards,
+      category: selectedCategory,
+      interpretation: data.interpretation,
+      createdAt: new Date().toISOString()
+    };
+    history.unshift(newEntry);
+    if (history.length > 50) history.splice(50);
+    localStorage.setItem('tarot-history', JSON.stringify(history));
+  };
+
   // AI解釈を取得（強化版）
   const getInterpretation = async (cards: any[]) => {
     setLoading(true);
     try {
-      // APIキーがある場合はClaude APIを使用
       if (process.env.NEXT_PUBLIC_USE_AI !== 'false') {
         const response = await fetch('/api/divination/tarot', {
           method: 'POST',
@@ -77,23 +95,22 @@ export default function TarotPage() {
             category: selectedCategory
           })
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           setInterpretation(data.interpretation);
+          // ここで履歴保存
+          saveToHistory(data, selectedCards, selectedCategory);
         } else {
-          // APIエラーの場合は詳細なローカル解釈を使用
           setInterpretation(generateDetailedLocalInterpretation(cards));
         }
       } else {
-        // モックモードの場合
         setInterpretation(generateDetailedLocalInterpretation(cards));
       }
-      
+
       setStep('result');
     } catch (error) {
       console.error('Failed to get interpretation:', error);
-      // エラー時は詳細なローカル解釈を使用
       setInterpretation(generateDetailedLocalInterpretation(cards));
       setStep('result');
     } finally {
@@ -271,26 +288,65 @@ ${categoryLabel}において、あなたは正しい道を歩んでいます。
     return imageMap[cardName];
   };
 
-  // 占い結果を保存（修正版）
-  const saveReading = async () => {
-    if (!user || saving) return;
-    
-    setSaving(true);
+  // LocalStorage保存用
+  const saveToLocalStorage = (readingData: any) => {
+    const history = JSON.parse(localStorage.getItem('tarot-history') || '[]');
+    const newEntry = {
+      ...readingData,
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString()
+    };
+    history.unshift(newEntry);
+    if (history.length > 50) history.splice(50);
+    localStorage.setItem('tarot-history', JSON.stringify(history));
+  };
+
+  // FirestoreとLocalStorageに保存
+  const saveReading = async (interpretation: string) => {
     try {
-      const parameters = calculateParametersFromCards(selectedCards);
-      const overallScore = Math.round(Object.values(parameters).reduce((a: number, b: number) => a + b, 0) / 6);
-      
-      
-      await saveTarotReading(selectedCards, interpretation, selectedCategory, parameters);
-      
-      console.log('✅ 占い結果を保存しました！');
-      
+      // 認証チェック（匿名認証でもOK）
+      let currentUser = auth.currentUser;
+      if (!currentUser) {
+        // 匿名認証
+        const result = await signInAnonymously(auth);
+        currentUser = result.user;
+      }
+
+      // 保存データを完全に定義
+      const readingData = {
+        userId: currentUser.uid,
+        cards: selectedCards || [],
+        category: selectedCategory || 'general',
+        interpretation: interpretation || '',
+        createdAt: serverTimestamp(),
+        type: 'tarot'
+      };
+
+      // Firestoreに保存
+      const docRef = await addDoc(collection(db, 'readings'), readingData);
+      console.log('✅ Firestoreに保存成功:', docRef.id);
+
+      // LocalStorageにも保存（オフライン対応）
+      saveToLocalStorage({
+        ...readingData,
+        createdAt: new Date().toISOString() // ローカル用はDate型
+      });
+
+      // 必要ならダッシュボード等へ遷移
       router.push('/dashboard');
     } catch (error) {
-      console.error('Failed to save reading:', error);
-      alert('保存に失敗しました。もう一度お試しください。');
-    } finally {
-      setSaving(false);
+      console.error('Firestore保存エラー:', error);
+      // エラー時はLocalStorageのみ
+      saveToLocalStorage({
+        userId: 'local',
+        cards: selectedCards || [],
+        category: selectedCategory || 'general',
+        interpretation: interpretation || '',
+        createdAt: new Date().toISOString(),
+        type: 'tarot'
+      });
+      alert('保存に失敗しました。オフライン履歴にのみ保存されました。');
     }
   };
 
