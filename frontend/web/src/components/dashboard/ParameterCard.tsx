@@ -7,7 +7,7 @@ import {
   Activity, 
   Briefcase, 
   Users, 
-  Star 
+  TrendingUp  // growth用のアイコン
 } from 'lucide-react';
 
 interface ParameterCardProps {
@@ -19,9 +19,9 @@ const PARAMETER_ICONS: Record<keyof DestinyParameters, React.ReactNode> = {
   love: <Heart className="w-5 h-5" />,
   money: <DollarSign className="w-5 h-5" />,
   health: <Activity className="w-5 h-5" />,
-  career: <Briefcase className="w-5 h-5" />,
+  career: <Briefcase className="w-5 h-5" />,  // work → career
   social: <Users className="w-5 h-5" />,
-  overall: <Star className="w-5 h-5" />
+  growth: <TrendingUp className="w-5 h-5" />  // overall → growth
 };
 
 export default function ParameterCard({ parameter, value }: ParameterCardProps) {

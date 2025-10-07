@@ -23,7 +23,7 @@ interface HistoryChartProps {
 
 export default function HistoryChart({ readings }: HistoryChartProps) {
   const [selectedParameters, setSelectedParameters] = useState<Set<string>>(
-    new Set(['overall', 'love', 'work'])
+    new Set(['love', 'career', 'growth'])  // overall, work を修正
   );
 
   // データを日付順に並び替えて整形
