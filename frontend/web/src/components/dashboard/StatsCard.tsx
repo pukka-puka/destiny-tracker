@@ -10,6 +10,14 @@ interface StatsCardProps {
 }
 
 export default function StatsCard({ stats }: StatsCardProps) {
+  // 平均スコアを計算（averageParametersから）
+  const averageOverall = stats.averageParameters
+    ? Math.round(
+        Object.values(stats.averageParameters).reduce((sum, val) => sum + val, 0) /
+          Object.keys(stats.averageParameters).length
+      )
+    : 0;
+
   return (
     <div className="space-y-4">
       {/* 占い回数 */}
@@ -27,7 +35,7 @@ export default function StatsCard({ stats }: StatsCardProps) {
         </div>
       </div>
 
-      {/* 連続日数 */}
+      {/* 連続日数 - currentStreakを使用 */}
       <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-orange-200 rounded-lg">
@@ -36,7 +44,7 @@ export default function StatsCard({ stats }: StatsCardProps) {
           <div>
             <p className="text-sm text-gray-600">連続占い日数</p>
             <p className="text-2xl font-bold text-orange-700">
-              {stats.streakDays}日
+              {stats.currentStreak}日
             </p>
           </div>
         </div>
@@ -57,7 +65,7 @@ export default function StatsCard({ stats }: StatsCardProps) {
         </div>
       </div>
 
-      {/* 平均スコア */}
+      {/* 平均スコア - averageParametersから計算 */}
       <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-green-200 rounded-lg">
@@ -66,7 +74,7 @@ export default function StatsCard({ stats }: StatsCardProps) {
           <div>
             <p className="text-sm text-gray-600">総合運平均</p>
             <p className="text-2xl font-bold text-green-700">
-              {stats.averageScores.overall}点
+              {averageOverall}点
             </p>
           </div>
         </div>
