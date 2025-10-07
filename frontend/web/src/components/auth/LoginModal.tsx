@@ -24,8 +24,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     setLoading(true);
     setError('');
     try {
-      const result = await signInWithGoogle();
-      if (result.user && !result.user.displayName) {
+      const user = await signInWithGoogle();  // resultではなくuserを直接受け取る
+      // userがnullでなく、displayNameがない場合
+      if (user && !user.displayName) {
         router.push('/create-profile');
       }
       onClose();
@@ -44,8 +45,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     
     try {
       if (isSignUp) {
-        const result = await signUpWithEmail(email, password);
-        if (result.user) {
+        const user = await signUpWithEmail(email, password);  // resultではなくuserを直接受け取る
+        // userがnullでない場合
+        if (user) {
           router.push('/create-profile');
         }
       } else {
@@ -81,49 +83,51 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-400 hover:text-gray-600"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
             {error}
           </div>
         )}
 
         <form onSubmit={handleEmailAuth} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               メールアドレス
             </label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               required
+              disabled={loading}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
               パスワード
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-600"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
               required
+              disabled={loading}
             />
           </div>
 
           <button
             type="submit"
+            className="w-full py-2 px-4 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition disabled:opacity-50"
             disabled={loading}
-            className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
           >
             {loading ? '処理中...' : isSignUp ? '登録' : 'ログイン'}
           </button>
