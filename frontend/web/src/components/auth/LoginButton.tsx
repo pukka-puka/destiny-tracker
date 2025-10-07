@@ -1,8 +1,6 @@
 'use client';
 
-import { signInWithGoogle, signInWithEmail, signUpWithEmail } from '@/lib/auth/firebase-auth';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { LogIn } from 'lucide-react';
 import LoginModal from './LoginModal';

@@ -8,21 +8,24 @@ import { majorArcana, calculateParametersFromCards } from '@/data/tarot-cards';
 import { Sparkles, RefreshCw, ArrowRight, Heart, Briefcase, DollarSign, Star } from 'lucide-react';
 import Image from 'next/image';
 
+// カテゴリの型定義
+type TarotCategory = 'general' | 'love' | 'career' | 'money';
+
 export default function TarotPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [step, setStep] = useState<'intro' | 'shuffle' | 'select' | 'reading' | 'result'>('intro');
   const [selectedCards, setSelectedCards] = useState<any[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('general');
+  const [selectedCategory, setSelectedCategory] = useState<TarotCategory>('general');  // 型を修正
   const [isShuffling, setIsShuffling] = useState(false);
   const [interpretation, setInterpretation] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const categories = [
+  const categories: Array<{ id: TarotCategory; label: string; icon: any; color: string }> = [
     { id: 'general', label: '総合運', icon: Star, color: 'from-purple-500 to-pink-500' },
     { id: 'love', label: '恋愛運', icon: Heart, color: 'from-pink-500 to-red-500' },
-    { id: 'work', label: '仕事運', icon: Briefcase, color: 'from-blue-500 to-cyan-500' },
+    { id: 'career', label: '仕事運', icon: Briefcase, color: 'from-blue-500 to-cyan-500' },
     { id: 'money', label: '金運', icon: DollarSign, color: 'from-green-500 to-emerald-500' },
   ];
 
@@ -142,7 +145,7 @@ ${present.isReversed ?
 特に注目すべきは、${present.meaning.split('、')[1]}というテーマです。
 今この瞬間、あなたは${categoryLabel}において重要な転換期にいます。
 ${selectedCategory === 'love' ? '愛と人間関係' : 
-  selectedCategory === 'work' ? '仕事とキャリア' : 
+  selectedCategory === 'career' ? '仕事とキャリア' : 
   selectedCategory === 'money' ? '経済と豊かさ' : 
   '人生全体'}の面で、新たな可能性が開かれようとしています。
 
@@ -163,7 +166,7 @@ ${future.isReversed ?
 
 このカードが示す${future.meaning.split('、')[0]}というテーマは、あなたの${categoryLabel}における到達点を表しています。
 近い将来、${selectedCategory === 'love' ? '素晴らしい出会いや関係の深まり' : 
-  selectedCategory === 'work' ? '仕事での大きな成果や新たなチャンス' : 
+  selectedCategory === 'career' ? '仕事での大きな成果や新たなチャンス' : 
   selectedCategory === 'money' ? '経済的な安定や予期せぬ収入' : 
   '人生における重要な達成'}が期待できます。
 
@@ -192,7 +195,7 @@ ${future.isReversed ?
 
 1. **今週中に取るべき行動**
    ${selectedCategory === 'love' ? '大切な人との時間を意識的に作り、感謝の気持ちを言葉にして伝えましょう。' : 
-     selectedCategory === 'work' ? '先延ばしにしていたプロジェクトや課題に着手し、小さな一歩でも前進させましょう。' : 
+     selectedCategory === 'career' ? '先延ばしにしていたプロジェクトや課題に着手し、小さな一歩でも前進させましょう。' : 
      selectedCategory === 'money' ? '収支を見直し、将来のための貯蓄計画を立てましょう。' : 
      '自分の本当の願いを明確にし、それに向けた具体的な計画を立てましょう。'}
 

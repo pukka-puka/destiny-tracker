@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { LoginModal } from '@/components/auth/LoginModal';
+import LoginModal from '@/components/auth/LoginModal'; // ← default importに修正
 import { Loader2, Lock } from 'lucide-react';
 
 interface AuthGuardProps {
@@ -93,25 +93,24 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
     };
 
     const userLevel = subscriptionLevels[userProfile.subscription as keyof typeof subscriptionLevels];
-    const requiredLevel = subscriptionLevels[requireSubscription as keyof typeof subscriptionLevels];
+    const requiredLevel = subscriptionLevels[requireSubscription];
 
     if (userLevel < requiredLevel) {
       return (
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="text-center max-w-md">
-            <div className="w-20 h-20 bg-gradient-to-r from-yellow-500 to-amber-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-6">
               <Lock className="w-10 h-10 text-white" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-4">
-              プランのアップグレードが必要です
+              アップグレードが必要です
             </h2>
             <p className="text-gray-400 mb-6">
-              この機能は{requireSubscription.toUpperCase()}プラン以上で利用可能です。
-              プランをアップグレードして、すべての機能をお楽しみください。
+              この機能を利用するには {requireSubscription.toUpperCase()} プラン以上が必要です。
             </p>
             <button
-              onClick={() => router.push('/subscription')}
-              className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 text-white font-bold rounded-lg hover:from-yellow-600 hover:to-amber-600 transition-all transform hover:scale-105"
+              onClick={() => router.push('/pricing')}
+              className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 text-white font-bold rounded-lg hover:from-yellow-700 hover:to-orange-700 transition-all transform hover:scale-105"
             >
               プランを見る
             </button>
@@ -121,6 +120,6 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
     }
   }
 
-  // 認証済みでアクセス権がある
+  // 認証済み & 権限あり
   return <>{children}</>;
 };

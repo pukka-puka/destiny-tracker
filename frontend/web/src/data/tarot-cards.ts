@@ -1,4 +1,5 @@
 import { DestinyParameters } from "@/types/destiny.types";
+
 // src/data/tarot-cards.ts
 
 export const majorArcana = [
@@ -37,4 +38,71 @@ export function generateTarotInterpretation(cards: any[], spread: string): strin
 未来に向けては${future.nameJa}が暗示する${future.meaning}の展開が予想されます。`;
 }
 
-// 運勢パラメータ計算
+// 運勢パラメータ計算（カードの意味に基づく実装）
+export function calculateParametersFromCards(cards: any[]): DestinyParameters {
+  // カードIDを数値に変換
+  const cardIds = cards.map(card => parseInt(card.id));
+  
+  // 各カードの意味に基づいてパラメータを計算
+  const baseValue = 50;
+  
+  // カードの属性マッピング
+  const cardAttributes: { [key: string]: { love: number, career: number, money: number, health: number, social: number, growth: number }} = {
+    '0': { love: 70, career: 60, money: 50, health: 80, social: 75, growth: 90 },  // 愚者
+    '1': { love: 60, career: 85, money: 75, health: 70, social: 65, growth: 80 },  // 魔術師
+    '2': { love: 75, career: 65, money: 60, health: 70, social: 70, growth: 85 },  // 女教皇
+    '3': { love: 85, career: 70, money: 80, health: 75, social: 80, growth: 70 },  // 女帝
+    '4': { love: 60, career: 90, money: 85, health: 70, social: 75, growth: 65 },  // 皇帝
+    '5': { love: 65, career: 75, money: 70, health: 65, social: 80, growth: 75 },  // 教皇
+    '6': { love: 95, career: 70, money: 65, health: 75, social: 85, growth: 75 },  // 恋人
+    '7': { love: 70, career: 85, money: 75, health: 80, social: 70, growth: 80 },  // 戦車
+    '8': { love: 75, career: 80, money: 70, health: 85, social: 75, growth: 85 },  // 力
+    '9': { love: 60, career: 70, money: 65, health: 70, social: 55, growth: 90 },  // 隠者
+    '10': { love: 75, career: 75, money: 80, health: 70, social: 75, growth: 70 }, // 運命の輪
+    '11': { love: 70, career: 80, money: 75, health: 70, social: 75, growth: 75 }, // 正義
+    '12': { love: 65, career: 60, money: 55, health: 65, social: 60, growth: 85 }, // 吊るされた男
+    '13': { love: 60, career: 65, money: 60, health: 60, social: 65, growth: 80 }, // 死神
+    '14': { love: 75, career: 75, money: 70, health: 80, social: 80, growth: 75 }, // 節制
+    '15': { love: 55, career: 65, money: 70, health: 55, social: 60, growth: 60 }, // 悪魔
+    '16': { love: 50, career: 55, money: 50, health: 60, social: 55, growth: 70 }, // 塔
+    '17': { love: 80, career: 75, money: 70, health: 85, social: 80, growth: 85 }, // 星
+    '18': { love: 70, career: 60, money: 60, health: 65, social: 65, growth: 75 }, // 月
+    '19': { love: 90, career: 85, money: 85, health: 90, social: 90, growth: 85 }, // 太陽
+    '20': { love: 75, career: 80, money: 75, health: 80, social: 75, growth: 85 }, // 審判
+    '21': { love: 85, career: 90, money: 85, health: 85, social: 85, growth: 90 }  // 世界
+  };
+
+  // 3枚のカードの平均値を計算
+  let parameters: DestinyParameters = {
+    love: 0,
+    career: 0,
+    money: 0,
+    health: 0,
+    social: 0,
+    growth: 0
+  };
+
+  cards.forEach(card => {
+    const attrs = cardAttributes[card.id] || { love: 70, career: 70, money: 70, health: 70, social: 70, growth: 70 };
+    
+    // 逆位置の場合は値を調整
+    const modifier = card.isReversed ? 0.7 : 1.0;
+    
+    parameters.love += attrs.love * modifier;
+    parameters.career += attrs.career * modifier;
+    parameters.money += attrs.money * modifier;
+    parameters.health += attrs.health * modifier;
+    parameters.social += attrs.social * modifier;
+    parameters.growth += attrs.growth * modifier;
+  });
+
+  // 3枚の平均を取り、整数に丸める
+  return {
+    love: Math.round(parameters.love / 3),
+    career: Math.round(parameters.career / 3),
+    money: Math.round(parameters.money / 3),
+    health: Math.round(parameters.health / 3),
+    social: Math.round(parameters.social / 3),
+    growth: Math.round(parameters.growth / 3)
+  };
+}
