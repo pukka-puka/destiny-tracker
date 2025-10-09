@@ -1,324 +1,324 @@
-// src/app/palm/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Upload, Camera, AlertCircle, Calendar, History, Sparkles } from 'lucide-react';
+import { Camera, Upload, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
 import { useAuth } from '@/contexts/AuthContext';
-import { palmService, type PalmReadingLimit } from '@/lib/services/palm.service';
-import { uploadImage } from '@/lib/services/destiny.service';
-import { format } from 'date-fns';
-import { ja } from 'date-fns/locale';
+import { storage, db } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+// 画像をJPEG形式に変換する関数
+async function convertToJPEG(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    img.onload = () => {
+      // 画像サイズを適切にリサイズ（最大1024px）
+      let width = img.width;
+      let height = img.height;
+      const maxSize = 1024;
+
+      if (width > height && width > maxSize) {
+        height = (height / width) * maxSize;
+        width = maxSize;
+      } else if (height > maxSize) {
+        width = (width / height) * maxSize;
+        height = maxSize;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // 白背景を追加（透明度対策）
+      if (ctx) {
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+      }
+
+      // JPEGに変換（品質90%）
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('画像の変換に失敗しました'));
+          }
+        },
+        'image/jpeg',
+        0.9
+      );
+    };
+
+    img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 export default function PalmReadingPage() {
-  const { user } = useAuth();
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
+  const { user } = useAuth();
   const [preview, setPreview] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [limitStatus, setLimitStatus] = useState<PalmReadingLimit | null>(null);
-  const [checkingLimit, setCheckingLimit] = useState(true);
-  const [history, setHistory] = useState<any[]>([]);
+  const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      checkLimit();
-      loadHistory();
-    }
-  }, [user]);
+  const onDrop = async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return;
 
-  const checkLimit = async () => {
-    try {
-      setCheckingLimit(true);
-      const status = await palmService.checkMonthlyLimit();
-      setLimitStatus(status);
-    } catch (err) {
-      console.error('Failed to check limit:', err);
-    } finally {
-      setCheckingLimit(false);
-    }
-  };
-
-  const loadHistory = async () => {
-    try {
-      const palmHistory = await palmService.getPalmHistory(3);
-      setHistory(palmHistory);
-    } catch (err) {
-      console.error('Failed to load history:', err);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    // バリデーション
-    const validation = palmService.validateImage(selectedFile);
-    if (!validation.valid) {
-      setError(validation.error!);
-      return;
-    }
-
-    setFile(selectedFile);
+    const file = acceptedFiles[0];
     setError(null);
 
-    // プレビュー生成
+    // プレビュー表示
     const reader = new FileReader();
     reader.onload = (e) => {
       setPreview(e.target?.result as string);
     };
-    reader.readAsDataURL(selectedFile);
+    reader.readAsDataURL(file);
   };
 
-  const handleAnalyze = async () => {
-    if (!file || !user) return;
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.heic', '.heif'],
+    },
+    maxFiles: 1,
+    multiple: false,
+  });
 
-    setLoading(true);
+  const handleUpload = async () => {
+    if (!preview || !user) return;
+
+    setUploading(true);
     setError(null);
 
     try {
-      // 画像をFirebase Storageにアップロード
-      const imageUrl = await uploadImage(file, `palm/${user.uid}`);
+      // Base64をBlobに変換
+      const base64Data = preview.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const originalBlob = new Blob([byteArray]);
+
+      // Fileオブジェクトに変換
+      const file = new File([originalBlob], 'palm.jpg', { type: 'image/jpeg' });
+
+      console.log('📸 画像変換開始...');
       
-      // Base64に変換
-      const imageBase64 = await palmService.convertToBase64(file);
+      // JPEG形式に変換（メタデータ削除）
+      const jpegBlob = await convertToJPEG(file);
       
-      // 手相解析を実行
-      const analysis = await palmService.analyzePalm(imageBase64, imageUrl);
+      console.log('✅ JPEG変換完了:', {
+        originalSize: file.size,
+        convertedSize: jpegBlob.size,
+        type: jpegBlob.type,
+      });
+
+      // Firebase Storageにアップロード
+      const fileName = `palm/${user.uid}/${Date.now()}.jpg`;
+      const storageRef = ref(storage, fileName);
+
+      console.log('📤 Firebase Storageにアップロード中...');
+      const snapshot = await uploadBytes(storageRef, jpegBlob, {
+        contentType: 'image/jpeg',
+      });
+
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      console.log('✅ アップロード完了:', downloadURL);
+
+      setUploading(false);
+      setAnalyzing(true);
+
+      // Firestoreに保存
+      const docRef = await addDoc(collection(db, 'palmReadings'), {
+        userId: user.uid,
+        imageUrl: downloadURL,
+        status: 'analyzing',
+        createdAt: serverTimestamp(),
+      });
+
+      console.log('💾 Firestoreに保存:', docRef.id);
+
+      // APIで手相解析
+      console.log('🤖 AI解析開始...');
       
-      // 結果ページに遷移
-      router.push(`/palm/analysis/${analysis.id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '解析に失敗しました');
-    } finally {
-      setLoading(false);
+      try {
+        const response = await fetch('/api/analyze-palm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            imageUrl: downloadURL,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.details || 'AI解析に失敗しました');
+        }
+
+        const data = await response.json();
+        console.log('✅ AI解析完了:', data);
+
+        setSuccess(true);
+        setAnalyzing(false);
+
+        // 解析結果ページへ遷移
+        setTimeout(() => {
+          router.push(`/palm/analysis/${docRef.id}`);
+        }, 1000);
+
+      } catch (apiError) {
+        console.error('❌ API呼び出しエラー:', apiError);
+        setError(apiError instanceof Error ? apiError.message : 'AI解析に失敗しました');
+        setAnalyzing(false);
+      }
+
+    } catch (uploadError) {
+      console.error('❌ アップロードエラー:', uploadError);
+      setError('画像のアップロードに失敗しました');
+      setUploading(false);
+      setAnalyzing(false);
     }
   };
 
-  const canAnalyze = limitStatus?.canAnalyze ?? false;
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-white">
-      <div className="container mx-auto px-4 py-8">
-        {/* ヘッダー */}
+    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-4">
-            AI手相占い
+          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-2">
+            <Sparkles className="w-8 h-8 text-purple-600" />
+            手相占い
+            <Sparkles className="w-8 h-8 text-purple-600" />
           </h1>
-          <p className="text-gray-600">
-            あなたの手のひらに刻まれた運命を読み解きます
-          </p>
+          <p className="text-gray-600">あなたの手のひらから未来を読み解きます</p>
         </div>
 
-        {/* 制限状態の表示 */}
-        {!checkingLimit && limitStatus && (
-          <div className="max-w-2xl mx-auto mb-8">
-            {canAnalyze ? (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start space-x-3">
-                <Sparkles className="w-5 h-5 text-green-500 mt-0.5" />
-                <div>
-                  <p className="text-green-800 font-medium">今月の手相占いが利用可能です</p>
-                  <p className="text-green-600 text-sm mt-1">
-                    月に1回、あなたの運命を詳しく鑑定します
-                  </p>
-                </div>
+        <div className="bg-white rounded-xl shadow-xl p-8">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-red-800 font-medium">エラーが発生しました</p>
+                <p className="text-red-600 text-sm mt-1">{error}</p>
               </div>
-            ) : (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start space-x-3">
-                <Calendar className="w-5 h-5 text-amber-500 mt-0.5" />
-                <div>
-                  <p className="text-amber-800 font-medium">今月の手相占いは既に実施済みです</p>
-                  <p className="text-amber-600 text-sm mt-1">
-                    次回は {limitStatus.nextAvailableDate && 
-                      format(limitStatus.nextAvailableDate, 'M月d日', { locale: ja })
-                    } から利用可能です
-                  </p>
-                  {limitStatus.lastAnalysisDate && (
-                    <p className="text-amber-600 text-sm mt-1">
-                      最終鑑定日: {format(limitStatus.lastAnalysisDate, 'M月d日', { locale: ja })}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* メインコンテンツ */}
-        {canAnalyze ? (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              {/* アップロードエリア */}
-              <div className="mb-8">
-                <label
-                  htmlFor="palm-upload"
-                  className={`block w-full border-2 border-dashed ${
-                    preview ? 'border-purple-300' : 'border-gray-300'
-                  } rounded-xl p-8 text-center cursor-pointer hover:border-purple-400 transition-colors`}
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800 font-medium">✅ 解析完了！</p>
+              <p className="text-green-600 text-sm mt-1">結果ページへ移動しています...</p>
+            </div>
+          )}
+
+          {!preview ? (
+            <div
+              {...getRootProps()}
+              className={`border-3 border-dashed rounded-lg p-12 text-center cursor-pointer transition-all
+                ${isDragActive ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:border-purple-400 hover:bg-gray-50'}`}
+            >
+              <input {...getInputProps()} />
+              <Camera className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium text-gray-700 mb-2">
+                {isDragActive ? '画像をドロップしてください' : '手のひらの写真をアップロード'}
+              </p>
+              <p className="text-sm text-gray-500">
+                クリックまたはドラッグ&ドロップで画像を選択
+              </p>
+              <p className="text-xs text-gray-400 mt-2">
+                JPEG, PNG, HEIC形式に対応
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="relative">
+                <img
+                  src={preview}
+                  alt="プレビュー"
+                  className="w-full rounded-lg shadow-lg"
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    setPreview(null);
+                    setError(null);
+                    setSuccess(false);
+                  }}
+                  className="flex-1 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                  disabled={uploading || analyzing}
                 >
-                  {preview ? (
-                    <div className="space-y-4">
-                      <img
-                        src={preview}
-                        alt="手のひらの画像"
-                        className="max-w-full max-h-96 mx-auto rounded-lg"
-                      />
-                      <p className="text-sm text-gray-600">
-                        画像を変更する場合は、ここをクリック
-                      </p>
-                    </div>
+                  別の画像を選択
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading || analyzing}
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      アップロード中...
+                    </>
+                  ) : analyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      AI解析中...
+                    </>
                   ) : (
-                    <div className="space-y-4">
-                      <div className="flex justify-center">
-                        <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center">
-                          <Upload className="w-10 h-10 text-purple-600" />
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium text-gray-700">
-                          手のひらの写真をアップロード
-                        </p>
-                        <p className="text-sm text-gray-500 mt-2">
-                          クリックして選択、またはドラッグ&ドロップ
-                        </p>
-                        <p className="text-xs text-gray-400 mt-2">
-                          JPG、PNG、WebP（最大10MB）
-                        </p>
-                      </div>
-                    </div>
+                    <>
+                      <Upload className="w-5 h-5" />
+                      解析開始
+                    </>
                   )}
-                  <input
-                    id="palm-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    disabled={loading}
-                  />
-                </label>
+                </button>
               </div>
+            </div>
+          )}
 
-              {/* 撮影のヒント */}
-              <div className="bg-purple-50 rounded-xl p-6 mb-8">
-                <h3 className="font-semibold text-purple-900 mb-3 flex items-center">
-                  <Camera className="w-5 h-5 mr-2" />
-                  撮影のポイント
-                </h3>
-                <ul className="space-y-2 text-sm text-purple-700">
-                  <li>• 明るい場所で、手のひら全体が写るように撮影してください</li>
-                  <li>• 指を自然に開いた状態で撮影してください</li>
-                  <li>• ピントが合っていることを確認してください</li>
-                  <li>• 手のひらの線がはっきり見えるように撮影してください</li>
-                </ul>
-              </div>
-
-              {/* エラー表示 */}
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 flex items-start space-x-3">
-                  <AlertCircle className="w-5 h-5 text-red-500 mt-0.5" />
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-              )}
-
-              {/* 解析ボタン */}
-              <button
-                onClick={handleAnalyze}
-                disabled={!file || loading}
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 px-8 rounded-xl font-semibold hover:shadow-lg transform hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    解析中...
-                  </span>
-                ) : (
-                  '手相を鑑定する'
-                )}
-              </button>
-            </div>
-          </div>
-        ) : (
-          // 履歴表示
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-                <History className="w-6 h-6 mr-2" />
-                過去の鑑定結果
-              </h2>
-              
-              {history.length > 0 ? (
-                <div className="space-y-4">
-                  {history.map((reading) => (
-                    <div
-                      key={reading.id}
-                      onClick={() => router.push(`/palm/analysis/${reading.id}`)}
-                      className="border border-gray-200 rounded-xl p-6 hover:border-purple-300 hover:shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-800 mb-2">
-                            {reading.summary}
-                          </h3>
-                          <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-                            <span>恋愛運: {reading.parameters.love}%</span>
-                            <span>仕事運: {reading.parameters.career}%</span>
-                            <span>金運: {reading.parameters.money}%</span>
-                          </div>
-                        </div>
-                        {reading.imageUrl && (
-                          <img
-                            src={reading.imageUrl}
-                            alt="手相"
-                            className="w-20 h-20 rounded-lg object-cover ml-4"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <p>まだ鑑定結果がありません</p>
-                  <p className="text-sm mt-2">来月になったら手相占いをお試しください</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 説明セクション */}
-        <div className="max-w-4xl mx-auto mt-12">
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">🔮</span>
-              </div>
-              <h3 className="font-semibold text-gray-800 mb-2">AI解析</h3>
-              <p className="text-sm text-gray-600">
-                最新のAI技術により、手相の線や丘を詳細に解析します
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="w-12 h-12 bg-pink-100 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">📊</span>
-              </div>
-              <h3 className="font-semibold text-gray-800 mb-2">詳細な鑑定</h3>
-              <p className="text-sm text-gray-600">
-                生命線、頭脳線、感情線など、主要な線を総合的に鑑定
-              </p>
-            </div>
-            
-            <div className="bg-white rounded-xl p-6 shadow-lg">
-              <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center mb-4">
-                <span className="text-2xl">✨</span>
-              </div>
-              <h3 className="font-semibold text-gray-800 mb-2">運勢アドバイス</h3>
-              <p className="text-sm text-gray-600">
-                あなたの強みと今後のチャンスを具体的にアドバイス
-              </p>
-            </div>
+          {/* 撮影のコツ */}
+          <div className="mt-8 p-6 bg-purple-50 rounded-lg">
+            <h3 className="font-semibold text-purple-900 mb-3 flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              より正確な鑑定のために
+            </h3>
+            <ul className="space-y-2 text-sm text-purple-800">
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600">•</span>
+                明るい場所で撮影してください
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600">•</span>
+                手のひら全体がはっきり写るように
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600">•</span>
+                指を軽く開いて、線がよく見えるように
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="text-purple-600">•</span>
+                利き手で撮影することをおすすめします
+              </li>
+            </ul>
           </div>
         </div>
       </div>
