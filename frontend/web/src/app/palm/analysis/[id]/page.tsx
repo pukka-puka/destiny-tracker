@@ -30,6 +30,7 @@ export default function PalmAnalysisPage() {
     if (user && params.id) {
       loadAnalysis();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, params.id]);
 
   const loadAnalysis = async () => {
@@ -189,13 +190,13 @@ export default function PalmAnalysisPage() {
                       <div>
                         <h3 className="text-xl font-semibold text-gray-800 mb-4">運勢パラメーター</h3>
                         <div className="grid grid-cols-2 gap-4">
-                          {Object.entries(analysis.parameters).map(([key, value]) => {
+                          {Object.entries(analysis.parameters || {}).map(([key, value]) => {
                             const Icon = parameterIcons[key as keyof typeof parameterIcons];
                             return (
                               <div key={key} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4">
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center">
-                                    <Icon className="w-5 h-5 text-purple-600 mr-2" />
+                                    {Icon && <Icon className="w-5 h-5 text-purple-600 mr-2" />}
                                     <span className="font-medium text-gray-700">
                                       {parameterLabels[key as keyof typeof parameterLabels]}
                                     </span>
@@ -222,7 +223,7 @@ export default function PalmAnalysisPage() {
                   {activeTab === 'lines' && (
                     <div className="space-y-6">
                       <h3 className="text-xl font-semibold text-gray-800 mb-4">手相の線の詳細</h3>
-                      {Object.entries(analysis.lines).map(([key, value]) => {
+                      {Object.entries(analysis.lines || {}).map(([key, value]) => {
                         if (!value) return null;
                         return (
                           <div key={key} className="border-l-4 border-purple-500 pl-4">
@@ -246,7 +247,7 @@ export default function PalmAnalysisPage() {
                           あなたの強み
                         </h3>
                         <div className="space-y-3">
-                          {analysis.advice.strength.map((item, index) => (
+                          {(analysis.advice?.strength || []).map((item, index) => (
                             <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                               <p className="text-gray-700">{item}</p>
                             </div>
@@ -261,7 +262,7 @@ export default function PalmAnalysisPage() {
                           今後のチャンス
                         </h3>
                         <div className="space-y-3">
-                          {analysis.advice.opportunity.map((item, index) => (
+                          {(analysis.advice?.opportunity || []).map((item, index) => (
                             <div key={index} className="bg-green-50 border border-green-200 rounded-xl p-4">
                               <p className="text-gray-700">{item}</p>
                             </div>
@@ -276,7 +277,7 @@ export default function PalmAnalysisPage() {
                           注意すべき点
                         </h3>
                         <div className="space-y-3">
-                          {analysis.advice.caution.map((item, index) => (
+                          {(analysis.advice?.caution || []).map((item, index) => (
                             <div key={index} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                               <p className="text-gray-700">{item}</p>
                             </div>
@@ -294,19 +295,19 @@ export default function PalmAnalysisPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-purple-100 text-sm mb-1">ラッキーカラー</p>
-                    <p className="text-xl font-bold">{analysis.fortune.luckyColor}</p>
+                    <p className="text-xl font-bold">{analysis.fortune?.luckyColor || '-'}</p>
                   </div>
                   <div>
                     <p className="text-purple-100 text-sm mb-1">ラッキーナンバー</p>
-                    <p className="text-xl font-bold">{analysis.fortune.luckyNumber}</p>
+                    <p className="text-xl font-bold">{analysis.fortune?.luckyNumber || '-'}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-purple-100 text-sm mb-1">ラッキーアイテム</p>
-                    <p className="text-xl font-bold">{analysis.fortune.luckyItem}</p>
+                    <p className="text-xl font-bold">{analysis.fortune?.luckyItem || '-'}</p>
                   </div>
                   <div className="col-span-2 mt-4">
                     <p className="text-purple-100 text-sm mb-2">総合メッセージ</p>
-                    <p className="leading-relaxed">{analysis.fortune.overall}</p>
+                    <p className="leading-relaxed">{analysis.fortune?.overall || ''}</p>
                   </div>
                 </div>
               </div>
