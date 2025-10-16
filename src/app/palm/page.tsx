@@ -1,34 +1,24 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Camera, Upload, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { auth, db, storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
 import { useAuthState } from 'react-firebase-hooks/auth';
 
 export default function PalmPage() {
   const router = useRouter();
-  const [user, loading, authError] = useAuthState(auth);
+  const [user, loading] = useAuthState(auth);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    if (loading || user) return;
-    
-    // 自動的に匿名ログイン
-    signInAnonymously(auth).catch(err => {
-      console.error('❌ 匿名ログイン失敗:', err);
-      setError(`ログインに失敗しました: ${err.message}`);
-    });
-  }, [user, loading]);
-
+  // 画像をJPEGに変換する関数
   const convertToJPEG = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -85,26 +75,24 @@ export default function PalmPage() {
   });
 
   const handleUpload = async () => {
-    if (!preview || !user) {
-      console.error('❌ preview or user is missing');
-      return;
-    }
+    if (!preview || !user) return;
 
     try {
       setUploading(true);
       setError(null);
-      setProgress('画像を変換中...');
 
-      console.log('📸 画像変換開始...');
+      // Base64からBlobに変換
       const base64Response = await fetch(preview);
       const blob = await base64Response.blob();
+
+      // JPEGに変換
+      console.log('🔄 画像をJPEGに変換中...');
       const jpegBlob = await convertToJPEG(
         new File([blob], 'palm.jpg', { type: 'image/jpeg' })
       );
 
-      console.log('✅ JPEG変換完了');
-
-      setProgress('画像をアップロード中...');
+      // Firebase Storageにアップロード
+      console.log('📤 Firebase Storageにアップロード中...');
       const fileName = `palm/${user.uid}/${Date.now()}.jpg`;
       const storageRef = ref(storage, fileName);
       await uploadBytes(storageRef, jpegBlob);
@@ -112,7 +100,8 @@ export default function PalmPage() {
 
       console.log('✅ アップロード完了:', imageUrl);
 
-      setProgress('データを保存中...');
+      // Firestoreに初期データを保存
+      console.log('💾 Firestoreに初期データを保存中...');
       const docRef = await addDoc(collection(db, 'readings'), {
         userId: user.uid,
         readingType: 'palm',
@@ -125,12 +114,13 @@ export default function PalmPage() {
         updatedAt: serverTimestamp(),
       });
 
-      console.log('💾 Firestoreに保存:', docRef.id);
+      console.log('✅ Firestore保存完了:', docRef.id);
 
       setUploading(false);
       setAnalyzing(true);
-      setProgress('AI解析中... (30秒〜1分程度かかります)');
 
+      // AI解析APIを呼び出し
+      console.log('🤖 AI解析を開始...');
       const analysisResponse = await fetch('/api/palm', {
         method: 'POST',
         headers: {
@@ -142,19 +132,17 @@ export default function PalmPage() {
         }),
       });
 
-      const analysisData = await analysisResponse.json();
-      console.log('✅ AI解析完了:', analysisData);
-
       if (!analysisResponse.ok) {
-        throw new Error(analysisData.error || 'AI解析に失敗しました');
+        throw new Error('AI解析に失敗しました');
       }
 
-      setProgress('解析完了！結果ページへ移動します...');
-      
+      console.log('✅ AI解析完了');
+      setSuccess(true);
+
+      // 結果ページへリダイレクト
       setTimeout(() => {
         router.push(`/palm/analysis/${docRef.id}`);
-      }, 2000);
-
+      }, 1000);
     } catch (err) {
       console.error('❌ エラー:', err);
       setError(
@@ -162,16 +150,28 @@ export default function PalmPage() {
       );
       setUploading(false);
       setAnalyzing(false);
-      setProgress('');
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 via-pink-50 to-indigo-100">
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
-          <p className="text-gray-600">読み込み中...</p>
+          <p className="text-gray-600 mb-4">ログインが必要です</p>
+          <button
+            onClick={() => router.push('/')}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            ホームへ戻る
+          </button>
         </div>
       </div>
     );
@@ -202,12 +202,12 @@ export default function PalmPage() {
             </div>
           )}
 
-          {progress && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-                <p className="text-blue-800 font-medium">{progress}</p>
-              </div>
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-green-800 font-medium">✅ 解析完了！</p>
+              <p className="text-green-600 text-sm">
+                結果ページへ移動しています...
+              </p>
             </div>
           )}
 
@@ -244,10 +244,7 @@ export default function PalmPage() {
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    setPreview(null);
-                    setProgress('');
-                  }}
+                  onClick={() => setPreview(null)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                   disabled={uploading || analyzing}
                 >
@@ -258,10 +255,15 @@ export default function PalmPage() {
                   disabled={uploading || analyzing}
                   className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {uploading || analyzing ? (
+                  {uploading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      処理中...
+                      アップロード中...
+                    </>
+                  ) : analyzing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      解析中...
                     </>
                   ) : (
                     <>

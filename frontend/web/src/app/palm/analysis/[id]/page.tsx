@@ -1,66 +1,129 @@
-// src/app/palm/analysis/[id]/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  Heart, 
-  Briefcase, 
-  DollarSign, 
-  Activity, 
-  Users, 
-  TrendingUp,
-  Sparkles,
-  Star,
-  AlertCircle
-} from 'lucide-react';
-import { palmService, type PalmAnalysis } from '@/lib/services/palm.service';
-import { useAuth } from '@/contexts/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { Loader2, Heart, Briefcase, DollarSign, Activity, Users, TrendingUp, Sparkles, Download, Star } from 'lucide-react';
+
+interface PalmAnalysis {
+  summary: string;
+  interpretation: string;
+  lines: {
+    lifeLine: string;
+    headLine: string;
+    heartLine: string;
+    fateLine: string;
+    sunLine?: string;
+    moneyLine?: string;
+    marriageLine?: string;
+    healthLine?: string;
+    otherLines?: string;
+  };
+  mounts?: {
+    jupiter: string;
+    saturn: string;
+    apollo: string;
+    mercury: string;
+    venus: string;
+    luna: string;
+  };
+  specialMarks?: Array<{
+    type: string;
+    location: string;
+    meaning: string;
+  }>;
+  handShape?: string;
+  parameters: {
+    love: number;
+    career: number;
+    money: number;
+    health: number;
+    social: number;
+    growth: number;
+  };
+  advice: {
+    strength: string[];
+    opportunity: string[];
+    caution: string[];
+  };
+  fortune: {
+    overall: string;
+    luckyColor: string;
+    luckyNumber: string;
+    luckyItem: string;
+    monthlyFortune?: string;
+  };
+}
 
 export default function PalmAnalysisPage() {
   const params = useParams();
   const router = useRouter();
-  const { user } = useAuth();
-  const [analysis, setAnalysis] = useState<PalmAnalysis | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'lines' | 'advice'>('overview');
+  const [user, loading] = useAuthState(auth);
+  const [palmReading, setPalmReading] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (user && params.id) {
-      loadAnalysis();
+    if (loading) return;
+    if (!user) {
+      router.push('/');
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, params.id]);
 
-  const loadAnalysis = async () => {
-    try {
-      setLoading(true);
-      const result = await palmService.getPalmReading(params.id as string);
-      setAnalysis(result);
-    } catch (error) {
-      console.error('Failed to load analysis:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const fetchReading = async () => {
+      try {
+        console.log('📥 解析結果を取得中:', params.id);
+        const docRef = doc(db, 'readings', params.id as string);
+        const docSnap = await getDoc(docRef);
 
-  if (loading) {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          console.log('✅ データ取得成功:', data);
+          
+          if (data.readingType !== 'palm') {
+            setError('手相占いのデータではありません');
+            return;
+          }
+          
+          if (!data.palmReading?.analysis) {
+            setError('解析結果がまだ生成されていません。少々お待ちください。');
+            return;
+          }
+          
+          setPalmReading(data.palmReading);
+        } else {
+          console.error('❌ ドキュメントが見つかりません');
+          setError('解析結果が見つかりませんでした');
+        }
+      } catch (err) {
+        console.error('❌ データ取得エラー:', err);
+        setError('データの取得に失敗しました');
+      }
+    };
+
+    fetchReading();
+  }, [params.id, user, loading, router]);
+
+  if (loading || (!palmReading && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-gray-600">解析結果を読み込んでいます...</p>
+        </div>
       </div>
     );
   }
 
-  if (!analysis) {
+  if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">鑑定結果が見つかりません</p>
+          <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={() => router.push('/palm')}
-            className="text-purple-600 hover:text-purple-700"
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
           >
             手相占いに戻る
           </button>
@@ -69,7 +132,9 @@ export default function PalmAnalysisPage() {
     );
   }
 
-  const parameterIcons = {
+  const { analysis } = palmReading;
+  
+  const parameterIcons: Record<string, any> = {
     love: Heart,
     career: Briefcase,
     money: DollarSign,
@@ -78,7 +143,7 @@ export default function PalmAnalysisPage() {
     growth: TrendingUp,
   };
 
-  const parameterLabels = {
+  const parameterLabels: Record<string, string> = {
     love: '恋愛運',
     career: '仕事運',
     money: '金運',
@@ -87,232 +152,259 @@ export default function PalmAnalysisPage() {
     growth: '成長運',
   };
 
-  const lineLabels = {
+  const parameterColors: Record<string, string> = {
+    love: 'from-pink-500 to-rose-500',
+    career: 'from-blue-500 to-indigo-500',
+    money: 'from-yellow-500 to-orange-500',
+    health: 'from-green-500 to-emerald-500',
+    social: 'from-purple-500 to-violet-500',
+    growth: 'from-indigo-500 to-blue-500',
+  };
+
+  const lineLabels: Record<string, string> = {
     lifeLine: '生命線',
     headLine: '頭脳線',
     heartLine: '感情線',
     fateLine: '運命線',
     sunLine: '太陽線',
+    moneyLine: '財運線',
     marriageLine: '結婚線',
+    healthLine: '健康線',
+    otherLines: 'その他の線',
+  };
+
+  const mountLabels: Record<string, string> = {
+    jupiter: '木星丘',
+    saturn: '土星丘',
+    apollo: '太陽丘',
+    mercury: '水星丘',
+    venus: '金星丘',
+    luna: '月丘',
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-50 via-pink-50 to-white">
-      <div className="container mx-auto px-4 py-8">
-        {/* ヘッダー */}
-        <div className="mb-8">
-          <button
-            onClick={() => router.push('/palm')}
-            className="flex items-center text-purple-600 hover:text-purple-700 mb-4"
-          >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            手相占いに戻る
-          </button>
-          <h1 className="text-3xl font-bold text-gray-800">手相鑑定結果</h1>
+    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-50 to-indigo-100 py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center gap-2">
+            <Sparkles className="w-8 h-8 text-purple-600" />
+            手相鑑定結果
+            <Sparkles className="w-8 h-8 text-purple-600" />
+          </h1>
+          <p className="text-gray-600">あなたの運勢を読み解きました</p>
         </div>
 
-        {/* メイン内容 */}
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-3 gap-8">
-            {/* 左側：画像と概要 */}
-            <div className="lg:col-span-1">
-              {analysis.imageUrl && (
-                <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-                  <img
-                    src={analysis.imageUrl}
-                    alt="手相"
-                    className="w-full rounded-xl"
-                  />
-                </div>
-              )}
-              
-              {/* サマリー */}
-              <div className="bg-white rounded-2xl shadow-xl p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-4">鑑定サマリー</h2>
-                <p className="text-gray-700 leading-relaxed">
-                  {analysis.summary}
-                </p>
-              </div>
+        {/* 画像とサマリー */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <img
+                src={palmReading.imageUrl}
+                alt="手相画像"
+                className="w-full rounded-lg shadow-md"
+              />
             </div>
-
-            {/* 右側：詳細情報 */}
-            <div className="lg:col-span-2">
-              {/* タブナビゲーション */}
-              <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-                <div className="flex border-b">
-                  <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`flex-1 py-4 px-6 font-medium transition-colors ${
-                      activeTab === 'overview'
-                        ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    総合鑑定
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('lines')}
-                    className={`flex-1 py-4 px-6 font-medium transition-colors ${
-                      activeTab === 'lines'
-                        ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    手相の線
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('advice')}
-                    className={`flex-1 py-4 px-6 font-medium transition-colors ${
-                      activeTab === 'advice'
-                        ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
-                        : 'text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    アドバイス
-                  </button>
-                </div>
-
-                <div className="p-8">
-                  {/* 総合鑑定タブ */}
-                  {activeTab === 'overview' && (
-                    <div className="space-y-8">
-                      {/* 詳細な解釈 */}
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4">詳細鑑定</h3>
-                        <div className="prose prose-purple max-w-none">
-                          <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                            {analysis.interpretation}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* パラメーター */}
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4">運勢パラメーター</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                          {Object.entries(analysis.parameters || {}).map(([key, value]) => {
-                            const Icon = parameterIcons[key as keyof typeof parameterIcons];
-                            return (
-                              <div key={key} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center">
-                                    {Icon && <Icon className="w-5 h-5 text-purple-600 mr-2" />}
-                                    <span className="font-medium text-gray-700">
-                                      {parameterLabels[key as keyof typeof parameterLabels]}
-                                    </span>
-                                  </div>
-                                  <span className="text-2xl font-bold text-purple-600">
-                                    {value}
-                                  </span>
-                                </div>
-                                <div className="w-full bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full"
-                                    style={{ width: `${value}%` }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 手相の線タブ */}
-                  {activeTab === 'lines' && (
-                    <div className="space-y-6">
-                      <h3 className="text-xl font-semibold text-gray-800 mb-4">手相の線の詳細</h3>
-                      {Object.entries(analysis.lines || {}).map(([key, value]) => {
-                        if (!value) return null;
-                        return (
-                          <div key={key} className="border-l-4 border-purple-500 pl-4">
-                            <h4 className="font-semibold text-gray-800 mb-2">
-                              {lineLabels[key as keyof typeof lineLabels]}
-                            </h4>
-                            <p className="text-gray-700">{value}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* アドバイスタブ */}
-                  {activeTab === 'advice' && (
-                    <div className="space-y-8">
-                      {/* 強み */}
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                          <Star className="w-6 h-6 text-yellow-500 mr-2" />
-                          あなたの強み
-                        </h3>
-                        <div className="space-y-3">
-                          {(analysis.advice?.strength || []).map((item, index) => (
-                            <div key={index} className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                              <p className="text-gray-700">{item}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* チャンス */}
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                          <Sparkles className="w-6 h-6 text-green-500 mr-2" />
-                          今後のチャンス
-                        </h3>
-                        <div className="space-y-3">
-                          {(analysis.advice?.opportunity || []).map((item, index) => (
-                            <div key={index} className="bg-green-50 border border-green-200 rounded-xl p-4">
-                              <p className="text-gray-700">{item}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 注意点 */}
-                      <div>
-                        <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-                          <AlertCircle className="w-6 h-6 text-amber-500 mr-2" />
-                          注意すべき点
-                        </h3>
-                        <div className="space-y-3">
-                          {(analysis.advice?.caution || []).map((item, index) => (
-                            <div key={index} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                              <p className="text-gray-700">{item}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* ラッキーアイテム */}
-              <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-xl p-6 mt-8 text-white">
-                <h3 className="text-xl font-semibold mb-4">🌟 今後の開運ポイント</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-purple-100 text-sm mb-1">ラッキーカラー</p>
-                    <p className="text-xl font-bold">{analysis.fortune?.luckyColor || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-purple-100 text-sm mb-1">ラッキーナンバー</p>
-                    <p className="text-xl font-bold">{analysis.fortune?.luckyNumber || '-'}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-purple-100 text-sm mb-1">ラッキーアイテム</p>
-                    <p className="text-xl font-bold">{analysis.fortune?.luckyItem || '-'}</p>
-                  </div>
-                  <div className="col-span-2 mt-4">
-                    <p className="text-purple-100 text-sm mb-2">総合メッセージ</p>
-                    <p className="leading-relaxed">{analysis.fortune?.overall || ''}</p>
-                  </div>
-                </div>
-              </div>
+            <div className="flex flex-col justify-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">総合評価</h2>
+              <p className="text-gray-700 leading-relaxed">{analysis.summary}</p>
             </div>
           </div>
+        </div>
+
+        {/* パラメーター */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">運勢パラメーター</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {Object.entries(analysis.parameters).map(([key, value]) => {
+              const Icon = parameterIcons[key];
+              const label = parameterLabels[key];
+              const colorClass = parameterColors[key];
+              const numValue = value as number;
+
+              return (
+                <div key={key} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon className="w-5 h-5 text-gray-600" />
+                      <span className="font-medium text-gray-700">{label}</span>
+                    </div>
+                    <span className="font-bold text-gray-900">{numValue}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className={`bg-gradient-to-r ${colorClass} h-3 rounded-full transition-all duration-500`}
+                      style={{ width: `${numValue}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 主要な線の解説 */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">主要な線の解説</h2>
+          <div className="space-y-4">
+            {Object.entries(analysis.lines).map(([key, value]) => (
+              <div key={key} className="border-l-4 border-purple-500 pl-4">
+                <h3 className="font-bold text-gray-800 mb-2 text-lg">
+                  {lineLabels[key] || key}
+                </h3>
+                <p className="text-gray-700 leading-relaxed">{value as string}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 丘の分析 */}
+        {analysis.mounts && (
+          <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">丘の分析</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              {Object.entries(analysis.mounts).map(([key, value]) => (
+                <div key={key} className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4">
+                  <h3 className="font-bold text-purple-800 mb-2">
+                    {mountLabels[key] || key}
+                  </h3>
+                  <p className="text-gray-700">{value as string}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 特殊紋様 */}
+        {analysis.specialMarks && analysis.specialMarks.length > 0 && (
+          <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Star className="w-6 h-6 text-yellow-500" />
+              特殊紋様
+            </h2>
+            <div className="space-y-4">
+              {analysis.specialMarks.map((mark: any, index: number) => (
+                <div key={index} className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+                  <div className="flex items-start gap-3">
+                    <Star className="w-5 h-5 text-yellow-600 mt-1" />
+                    <div>
+                      <h3 className="font-bold text-yellow-900 mb-1">
+                        {mark.type}
+                      </h3>
+                      <p className="text-sm text-yellow-800 mb-2">
+                        場所: {mark.location}
+                      </p>
+                      <p className="text-gray-700">{mark.meaning}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 詳細な解釈 */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">詳細な解釈</h2>
+          <div className="prose prose-gray max-w-none">
+            <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
+              {analysis.interpretation}
+            </p>
+          </div>
+        </div>
+
+        {/* 手の形状 */}
+        {analysis.handShape && (
+          <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">手の形状</h2>
+            <p className="text-gray-700 leading-relaxed">{analysis.handShape}</p>
+          </div>
+        )}
+
+        {/* アドバイス */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">アドバイス</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div>
+              <h3 className="font-bold text-green-600 mb-3 text-lg">✨ あなたの強み</h3>
+              <ul className="space-y-2">
+                {analysis.advice.strength.map((item: string, index: number) => (
+                  <li key={index} className="text-gray-700 flex items-start gap-2">
+                    <span className="text-green-600 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="font-bold text-blue-600 mb-3 text-lg">🌟 チャンス</h3>
+              <ul className="space-y-2">
+                {analysis.advice.opportunity.map((item: string, index: number) => (
+                  <li key={index} className="text-gray-700 flex items-start gap-2">
+                    <span className="text-blue-600 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="font-bold text-orange-600 mb-3 text-lg">⚠️ 注意点</h3>
+              <ul className="space-y-2">
+                {analysis.advice.caution.map((item: string, index: number) => (
+                  <li key={index} className="text-gray-700 flex items-start gap-2">
+                    <span className="text-orange-600 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* ラッキーアイテム */}
+        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">運勢アップのヒント</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーカラー</p>
+              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyColor}</p>
+            </div>
+            <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーナンバー</p>
+              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyNumber}</p>
+            </div>
+            <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーアイテム</p>
+              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyItem}</p>
+            </div>
+            <div className="text-center p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg">
+              <p className="text-sm text-gray-600 mb-2 font-medium">総合運</p>
+              <p className="font-bold text-gray-900 text-sm leading-tight">{analysis.fortune.overall}</p>
+            </div>
+          </div>
+          
+          {analysis.fortune.monthlyFortune && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg">
+              <h3 className="font-bold text-purple-900 mb-2">今月の運勢</h3>
+              <p className="text-gray-800">{analysis.fortune.monthlyFortune}</p>
+            </div>
+          )}
+        </div>
+
+        {/* アクションボタン */}
+        <div className="flex gap-4 justify-center">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          >
+            ダッシュボードへ
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            保存
+          </button>
         </div>
       </div>
     </div>
