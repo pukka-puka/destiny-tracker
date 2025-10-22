@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -7,7 +8,8 @@ import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
   Sparkles, TrendingUp, Calendar, Heart, Briefcase, 
-  DollarSign, Activity, Users, LineChart as LineChartIcon 
+  DollarSign, Activity, Users, LineChart as LineChartIcon,
+  BookOpen, MessageCircle, History, User as UserIcon
 } from 'lucide-react';
 import {
   LineChart,
@@ -166,7 +168,43 @@ export default function DashboardPage() {
       date: date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
       ...reading.parameters
     };
-  }).reverse(); // 古い順に並べ替え
+  }).reverse();
+
+  // 新機能カード
+  const newFeatures = [
+    {
+      title: '易占い',
+      description: '3000年の歴史を持つ東洋の叡智',
+      icon: BookOpen,
+      color: 'from-amber-500 to-orange-500',
+      path: '/iching',
+      badge: 'NEW'
+    },
+    {
+      title: 'AIチャット相談',
+      description: '24時間いつでも相談できる',
+      icon: MessageCircle,
+      color: 'from-indigo-500 to-purple-500',
+      path: '/chat',
+      badge: 'NEW'
+    },
+    {
+      title: '相性診断',
+      description: '二人の運命の相性を分析',
+      icon: Heart,
+      color: 'from-rose-500 to-pink-500',
+      path: '/compatibility',
+      badge: 'NEW'
+    },
+    {
+      title: '占い履歴',
+      description: '過去の占い結果を振り返る',
+      icon: History,
+      color: 'from-slate-500 to-gray-500',
+      path: '/history',
+      badge: ''
+    }
+  ];
 
   if (loading || !authReady) {
     return (
@@ -191,12 +229,20 @@ export default function DashboardPage() {
             <p className="text-gray-600 mb-8">
               最初の占いをして、あなたの運命を知りましょう！
             </p>
-            <button
-              onClick={() => router.push('/tarot')}
-              className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold hover:from-purple-700 hover:to-pink-700 transition"
-            >
-              タロット占いを始める
-            </button>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => router.push('/tarot')}
+                className="px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full font-semibold hover:from-purple-700 hover:to-pink-700 transition"
+              >
+                タロット占いを始める
+              </button>
+              <button
+                onClick={() => router.push('/palm')}
+                className="px-8 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-full font-semibold hover:from-blue-600 hover:to-cyan-600 transition"
+              >
+                手相占いを始める
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -209,11 +255,20 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
       <div className="max-w-6xl mx-auto">
         
-        <div className="mb-8 pt-6">
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
-            ダッシュボード
-          </h1>
-          <p className="text-gray-600">あなたの運勢と成長の記録</p>
+        {/* ヘッダー */}
+        <div className="mb-8 pt-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+              ダッシュボード
+            </h1>
+            <p className="text-gray-600">あなたの運勢と成長の記録</p>
+          </div>
+          <button
+            onClick={() => router.push('/profile')}
+            className="p-3 rounded-full bg-white shadow-md hover:shadow-lg transition"
+          >
+            <UserIcon className="w-6 h-6 text-purple-600" />
+          </button>
         </div>
 
         {/* 最新の占い結果 */}
@@ -304,58 +359,42 @@ export default function DashboardPage() {
                   }}
                 />
                 <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="love"
-                  stroke={parameterColors.love}
-                  strokeWidth={2}
-                  name="恋愛運"
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="career"
-                  stroke={parameterColors.career}
-                  strokeWidth={2}
-                  name="仕事運"
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="money"
-                  stroke={parameterColors.money}
-                  strokeWidth={2}
-                  name="金運"
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="health"
-                  stroke={parameterColors.health}
-                  strokeWidth={2}
-                  name="健康運"
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="social"
-                  stroke={parameterColors.social}
-                  strokeWidth={2}
-                  name="対人運"
-                  dot={{ r: 4 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="growth"
-                  stroke={parameterColors.growth}
-                  strokeWidth={2}
-                  name="成長運"
-                  dot={{ r: 4 }}
-                />
+                <Line type="monotone" dataKey="love" stroke={parameterColors.love} strokeWidth={2} name="恋愛運" dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="career" stroke={parameterColors.career} strokeWidth={2} name="仕事運" dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="money" stroke={parameterColors.money} strokeWidth={2} name="金運" dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="health" stroke={parameterColors.health} strokeWidth={2} name="健康運" dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="social" stroke={parameterColors.social} strokeWidth={2} name="対人運" dot={{ r: 4 }} />
+                <Line type="monotone" dataKey="growth" stroke={parameterColors.growth} strokeWidth={2} name="成長運" dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
+
+        {/* 新機能セクション */}
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <Sparkles className="w-6 h-6 text-purple-600" />
+            新しい占いメニュー
+          </h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {newFeatures.map((feature, index) => (
+              <button
+                key={index}
+                onClick={() => router.push(feature.path)}
+                className={`relative bg-gradient-to-br ${feature.color} rounded-xl p-6 text-white text-left hover:scale-105 transition-all group`}
+              >
+                {feature.badge && (
+                  <div className="absolute top-2 right-2 px-2 py-1 bg-yellow-400 text-yellow-900 text-xs font-bold rounded-full">
+                    {feature.badge}
+                  </div>
+                )}
+                <feature.icon className="w-8 h-8 mb-3 group-hover:scale-110 transition-transform" />
+                <h3 className="text-lg font-bold mb-1">{feature.title}</h3>
+                <p className="text-sm text-white/80">{feature.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* クイックアクション */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -374,7 +413,7 @@ export default function DashboardPage() {
           >
             <Activity className="w-12 h-12 mb-4 group-hover:scale-110 transition-transform" />
             <h3 className="text-2xl font-bold mb-2">AI手相占い</h3>
-            <p className="text-blue-100">月間の詳細鑑定</p>
+            <p className="text-blue-100">手のひらから運命を読み解く</p>
           </button>
         </div>
 
