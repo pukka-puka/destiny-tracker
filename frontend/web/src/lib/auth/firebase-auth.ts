@@ -44,6 +44,12 @@ export interface UserProfile {
     social: number;
     overall: number;
   };
+  // Stripe関連フィールド
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete';
+  subscriptionCurrentPeriodEnd?: Date;
+  subscriptionCancelAtPeriodEnd?: boolean;
 }
 
 // Googleプロバイダーの設定
