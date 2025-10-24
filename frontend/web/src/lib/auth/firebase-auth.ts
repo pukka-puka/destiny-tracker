@@ -26,7 +26,7 @@ export interface UserProfile {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
-  subscription: 'free' | 'basic' | 'premium' | 'vip';
+  subscription: 'free' | 'basic' | 'premium';
   credits: number;
   createdAt: Timestamp;
   updatedAt: Timestamp;
