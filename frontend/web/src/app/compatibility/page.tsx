@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Heart, Users, Briefcase, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import UsageLimitModal from '@/components/UsageLimitModal';
 
 interface Person {
   name: string;
@@ -32,10 +33,17 @@ export default function CompatibilityPage() {
   const [person2, setPerson2] = useState<Person>({ name: '', birthDate: '' });
   const [category, setCategory] = useState<'love' | 'friendship' | 'work'>('love');
   const [result, setResult] = useState<CompatibilityResult | null>(null);
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   const analyzeCompatibility = async () => {
     if (!person1.name || !person1.birthDate || !person2.name || !person2.birthDate) {
       alert('すべての項目を入力してください');
+      return;
+    }
+
+    // ユーザーIDの確認を追加
+    if (!user?.uid) {
+      alert('ログインが必要です');
       return;
     }
 
@@ -48,13 +56,44 @@ export default function CompatibilityPage() {
         body: JSON.stringify({
           person1,
           person2,
-          category
+          category,
+          userId: user.uid  // ← この行を追加
         })
       });
+
+      // 403エラーのハンドリングを追加
+      if (response.status === 403) {
+        const errorData = await response.json();
+        setShowLimitModal(true);
+        setStep('input');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('相性診断の実行に失敗しました');
+      }
 
       const data = await response.json();
       setResult(data.result);
       setStep('result');
+
+      // Firestoreに保存
+      if (typeof window !== 'undefined') {
+        const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        
+        await addDoc(collection(db, 'readings'), {
+          userId: user.uid,
+          readingType: 'compatibility',
+          person1,
+          person2,
+          category,
+          result: data.result,
+          createdAt: serverTimestamp(),
+        });
+        console.log('相性診断結果を保存しました');
+      }
+
     } catch (error) {
       console.error('相性診断エラー:', error);
       alert('診断に失敗しました');
@@ -386,6 +425,13 @@ export default function CompatibilityPage() {
           </div>
         )}
       </div>
+
+      {/* 使用制限モーダルを追加 */}
+      <UsageLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        featureName="相性診断"
+      />
     </div>
   );
 }

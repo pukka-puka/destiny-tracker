@@ -17,11 +17,14 @@ import {
   getResultClosing,
   generateEnhancedFortuneSection
 } from '@/lib/tarot-enhancements';
+import { useAuth } from '@/contexts/AuthContext';
+import UsageLimitModal from '@/components/UsageLimitModal';
 
 type TarotCategory = 'general' | 'love' | 'career' | 'money';
 
 export default function TarotPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [step, setStep] = useState<'intro' | 'shuffle' | 'select' | 'reveal' | 'reading' | 'result'>('intro');
   const [selectedCards, setSelectedCards] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<TarotCategory>('general');
@@ -31,6 +34,7 @@ export default function TarotPage() {
   const [loading, setLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [revealedCards, setRevealedCards] = useState<boolean[]>([false, false, false]);
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   const categories: Array<{ id: TarotCategory; label: string; icon: any; color: string }> = [
     { id: 'general', label: '総合運', icon: Star, color: 'from-purple-500 to-pink-500' },
@@ -211,19 +215,32 @@ export default function TarotPage() {
 
   const getInterpretation = async (cards: any[]) => {
     setLoading(true);
+    
+    // ユーザーIDの確認
+    if (!user?.uid) {
+      alert('ログインが必要です');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/divination/tarot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cards: cards.map(c => ({
-            name: c.nameJa,
-            meaning: c.meaning,
-            reversed: c.isReversed || false
-          })),
-          category: selectedCategory
+          question: `私の${categories.find(c => c.id === selectedCategory)?.label}を詳しく教えてください`,
+          spreadType: 'three-card',
+          userId: user.uid // ← userIdを追加
         })
       });
+
+      // 403エラー（使用制限）のハンドリング
+      if (response.status === 403) {
+        const errorData = await response.json();
+        setShowLimitModal(true);
+        setLoading(false);
+        return;
+      }
 
       if (!response.ok) throw new Error('API呼び出しに失敗しました');
 
@@ -718,6 +735,13 @@ ${closing.closing}
           </div>
         )}
       </div>
+
+      {/* 使用制限モーダルを追加 */}
+      <UsageLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        featureName="タロット占い"
+      />
 
       <style jsx>{`
         @keyframes shuffle {

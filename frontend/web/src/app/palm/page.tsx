@@ -1,33 +1,25 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Camera, Upload, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { auth, db, storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { signInAnonymously } from 'firebase/auth';
-import { useAuthState } from 'react-firebase-hooks/auth';
+import { useAuth } from '@/contexts/AuthContext';
+import UsageLimitModal from '@/components/UsageLimitModal';
 
 export default function PalmPage() {
   const router = useRouter();
-  const [user, loading, authError] = useAuthState(auth);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
-
-  useEffect(() => {
-    if (loading || user) return;
-    
-    // 自動的に匿名ログイン
-    signInAnonymously(auth).catch(err => {
-      console.error('❌ 匿名ログイン失敗:', err);
-      setError(`ログインに失敗しました: ${err.message}`);
-    });
-  }, [user, loading]);
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   const convertToJPEG = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -131,16 +123,26 @@ export default function PalmPage() {
       setAnalyzing(true);
       setProgress('AI解析中... (30秒〜1分程度かかります)');
 
-      const analysisResponse = await fetch('/api/palm', {
+      const analysisResponse = await fetch('/api/analyze-palm', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          readingId: docRef.id,
           imageUrl,
+          userId: user.uid,
         }),
       });
+
+      // 403エラーのハンドリングを追加
+      if (analysisResponse.status === 403) {
+        const errorData = await analysisResponse.json();
+        setShowLimitModal(true);
+        setUploading(false);
+        setAnalyzing(false);
+        setProgress('');
+        return;
+      }
 
       const analysisData = await analysisResponse.json();
       console.log('✅ AI解析完了:', analysisData);
@@ -274,6 +276,13 @@ export default function PalmPage() {
             </div>
           )}
         </div>
+        
+        {/* 使用制限モーダルを追加 */}
+        <UsageLimitModal
+          isOpen={showLimitModal}
+          onClose={() => setShowLimitModal(false)}
+          featureName="手相占い"
+        />
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, query, where, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import UsageLimitModal from '@/components/UsageLimitModal';
 
 interface Message {
   id: string;
@@ -63,6 +64,7 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState(characters[0]);
   const [showCharacterSelect, setShowCharacterSelect] = useState(false);
+  const [showLimitModal, setShowLimitModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [sessionId, setSessionId] = useState<string>('');
 
@@ -114,6 +116,7 @@ export default function ChatPage() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInputMessage = inputMessage; // 入力メッセージを保存
     setInputMessage('');
     setIsLoading(true);
 
@@ -124,7 +127,7 @@ export default function ChatPage() {
         sessionId,
         characterId: selectedCharacter.id,
         role: 'user',
-        content: inputMessage,
+        content: currentInputMessage,
         timestamp: Timestamp.now()
       });
 
@@ -137,10 +140,26 @@ export default function ChatPage() {
             role: m.role,
             content: m.content
           })),
-          newMessage: inputMessage,
-          characterPrompt: selectedCharacter.systemPrompt
+          newMessage: currentInputMessage,
+          characterPrompt: selectedCharacter.systemPrompt,
+          userId: user.uid  // ← この行を追加
         })
       });
+
+      // 403エラーのハンドリングを追加
+      if (response.status === 403) {
+        const errorData = await response.json();
+        setShowLimitModal(true);
+        setIsLoading(false);
+        // ユーザーメッセージを削除（送信できなかったので）
+        setMessages(prev => prev.filter(m => m.id !== userMessage.id));
+        setInputMessage(currentInputMessage); // 入力を復元
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('メッセージ送信に失敗しました');
+      }
 
       const data = await response.json();
       
@@ -330,6 +349,13 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+
+      {/* 使用制限モーダルを追加 */}
+      <UsageLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        featureName="AIチャット"
+      />
     </div>
   );
 }

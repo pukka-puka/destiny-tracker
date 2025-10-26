@@ -4,6 +4,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, BookOpen, ArrowRight, Loader2 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import UsageLimitModal from '@/components/UsageLimitModal';
 
 // 簡易的な64卦データ
 interface Hexagram {
@@ -63,6 +65,7 @@ function divineWithSticks(): { value: number; changing: boolean } {
 
 export default function IChingPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [step, setStep] = useState<'intro' | 'divining' | 'result'>('intro');
   const [question, setQuestion] = useState('');
   const [divineCount, setDivineCount] = useState(0);
@@ -72,12 +75,20 @@ export default function IChingPage() {
   const [isAnimating, setIsAnimating] = useState(false);
   const [interpretation, setInterpretation] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showLimitModal, setShowLimitModal] = useState(false);
 
   const startDivination = () => {
     if (!question.trim()) {
       alert('質問を入力してください');
       return;
     }
+
+    // ユーザーIDの確認を追加
+    if (!user?.uid) {
+      alert('ログインが必要です');
+      return;
+    }
+
     setStep('divining');
     setDivineCount(0);
     setLines([]);
@@ -134,9 +145,18 @@ export default function IChingPage() {
           question,
           hexagram: mainHexagram,
           changingLines: finalChangingLines,
-          futureHexagram: null
+          futureHexagram: null,
+          userId: user?.uid  // ← この行を追加
         })
       });
+
+      // 403エラーのハンドリングを追加
+      if (response.status === 403) {
+        const errorData = await response.json();
+        setShowLimitModal(true);
+        setIsAnalyzing(false);
+        return;
+      }
 
       const data = await response.json();
       const aiInterpretation = data.interpretation || mainHexagram.meaning.general;
@@ -148,10 +168,10 @@ export default function IChingPage() {
         const { db } = await import('@/lib/firebase');
         const { auth } = await import('@/lib/firebase');
         
-        const user = auth.currentUser;
-        if (user) {
+        const currentUser = auth.currentUser;
+        if (currentUser) {
           await addDoc(collection(db, 'readings'), {
-            userId: user.uid,
+            userId: currentUser.uid,
             readingType: 'iching',
             question,
             hexagram: {
@@ -411,6 +431,13 @@ export default function IChingPage() {
           </div>
         )}
       </div>
+
+      {/* 使用制限モーダルを追加 */}
+      <UsageLimitModal
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        featureName="易占い"
+      />
 
       {/* CSSアニメーション */}
       <style jsx>{`

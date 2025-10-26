@@ -3,13 +3,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
   Sparkles, TrendingUp, Calendar, Heart, Briefcase, 
   DollarSign, Activity, Users, LineChart as LineChartIcon,
-  BookOpen, MessageCircle, History, User as UserIcon
+  BookOpen, MessageCircle, History, User as UserIcon,
+  ChevronRight
 } from 'lucide-react';
 import {
   LineChart,
@@ -49,6 +51,56 @@ interface UserProfile {
   compatibilityCount?: number;
 }
 
+interface UserStats {
+  readingCount: number;
+  palmReadingCount: number;
+  ichingCount: number;
+  chatConsultCount: number;
+  compatibilityCount: number;
+  lastResetDate: Date;
+  planType: 'free' | 'basic' | 'premium';
+}
+
+interface UsageLimits {
+  readingCount: number;
+  palmReadingCount: number;
+  ichingCount: number;
+  chatConsultCount: number;
+  compatibilityCount: number;
+}
+
+const PLAN_LIMITS: Record<'free' | 'basic' | 'premium', UsageLimits> = {
+  free: {
+    readingCount: 3,
+    palmReadingCount: 1,
+    ichingCount: 2,
+    chatConsultCount: 5,
+    compatibilityCount: 2,
+  },
+  basic: {
+    readingCount: 30,
+    palmReadingCount: 10,
+    ichingCount: 20,
+    chatConsultCount: 50,
+    compatibilityCount: 20,
+  },
+  premium: {
+    readingCount: 999,
+    palmReadingCount: 999,
+    ichingCount: 999,
+    chatConsultCount: 999,
+    compatibilityCount: 999,
+  },
+};
+
+const FEATURE_NAMES = {
+  readingCount: 'タロット占い',
+  palmReadingCount: '手相占い',
+  ichingCount: '易占い',
+  chatConsultCount: 'AIチャット',
+  compatibilityCount: '相性診断',
+};
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -56,6 +108,8 @@ export default function DashboardPage() {
   const [readingHistory, setReadingHistory] = useState<Reading[]>([]);
   const [authReady, setAuthReady] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   const defaultParameters = {
     love: 70,
@@ -81,6 +135,48 @@ export default function DashboardPage() {
 
     return () => unsubscribe();
   }, [router]);
+
+  // ユーザー統計の取得
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchUserStats = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const statsDoc = await getDoc(doc(db, 'userStats', user.uid));
+        if (statsDoc.exists()) {
+          const data = statsDoc.data();
+          setUserStats({
+            readingCount: data.readingCount || 0,
+            palmReadingCount: data.palmReadingCount || 0,
+            ichingCount: data.ichingCount || 0,
+            chatConsultCount: data.chatConsultCount || 0,
+            compatibilityCount: data.compatibilityCount || 0,
+            lastResetDate: data.lastResetDate?.toDate() || new Date(),
+            planType: data.planType || 'free',
+          });
+        } else {
+          setUserStats({
+            readingCount: 0,
+            palmReadingCount: 0,
+            ichingCount: 0,
+            chatConsultCount: 0,
+            compatibilityCount: 0,
+            lastResetDate: new Date(),
+            planType: 'free',
+          });
+        }
+      } catch (error) {
+        console.error('統計取得エラー:', error);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    fetchUserStats();
+  }, [auth.currentUser]);
 
   const loadUserProfile = async (userId: string) => {
     try {
@@ -275,6 +371,91 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          {/* 使用状況セクション */}
+          {!loadingStats && userStats && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-purple-600" />
+                  今月の使用状況
+                </h2>
+                <Link
+                  href="/pricing"
+                  className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+                >
+                  プランを変更
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm text-gray-600">現在のプラン</p>
+                    <p className="text-xl font-bold text-gray-900">
+                      {userStats.planType === 'free' && '無料プラン'}
+                      {userStats.planType === 'basic' && 'ベーシックプラン'}
+                      {userStats.planType === 'premium' && 'プレミアムプラン'}
+                    </p>
+                  </div>
+                  {userStats.planType === 'free' && (
+                    <Link
+                      href="/pricing"
+                      className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 text-sm font-medium"
+                    >
+                      アップグレード
+                    </Link>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  {(Object.keys(FEATURE_NAMES) as Array<keyof UsageLimits>).map((key) => {
+                    const used = userStats[key];
+                    const limit = PLAN_LIMITS[userStats.planType][key];
+                    const percentage = limit === 999 ? 0 : (used / limit) * 100;
+                    const remaining = limit === 999 ? '無制限' : `${Math.max(0, limit - used)}回`;
+
+                    return (
+                      <div key={key}>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium text-gray-700">
+                            {FEATURE_NAMES[key]}
+                          </span>
+                          <span className="text-sm text-gray-600">
+                            {used} / {limit === 999 ? '∞' : limit}回
+                            <span className="ml-2 text-purple-600 font-medium">
+                              (残り{remaining})
+                            </span>
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${
+                              percentage >= 100
+                                ? 'bg-red-500'
+                                : percentage >= 80
+                                ? 'bg-yellow-500'
+                                : 'bg-gradient-to-r from-purple-600 to-pink-600'
+                            }`}
+                            style={{ width: `${Math.min(percentage, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {userStats.planType === 'free' && (
+                  <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                    <p className="text-sm text-purple-800">
+                      💡 プランをアップグレードすると、より多くの占いをご利用いただけます！
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl p-12 shadow-lg text-center">
             <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-800 mb-4">
@@ -334,6 +515,91 @@ export default function DashboardPage() {
             <UserIcon className="w-6 h-6 text-purple-600" />
           </button>
         </div>
+
+        {/* 使用状況セクション */}
+        {!loadingStats && userStats && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <TrendingUp className="w-6 h-6 text-purple-600" />
+                今月の使用状況
+              </h2>
+              <Link
+                href="/pricing"
+                className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
+              >
+                プランを変更
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-lg p-6 mb-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm text-gray-600">現在のプラン</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {userStats.planType === 'free' && '無料プラン'}
+                    {userStats.planType === 'basic' && 'ベーシックプラン'}
+                    {userStats.planType === 'premium' && 'プレミアムプラン'}
+                  </p>
+                </div>
+                {userStats.planType === 'free' && (
+                  <Link
+                    href="/pricing"
+                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 text-sm font-medium"
+                  >
+                    アップグレード
+                  </Link>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {(Object.keys(FEATURE_NAMES) as Array<keyof UsageLimits>).map((key) => {
+                  const used = userStats[key];
+                  const limit = PLAN_LIMITS[userStats.planType][key];
+                  const percentage = limit === 999 ? 0 : (used / limit) * 100;
+                  const remaining = limit === 999 ? '無制限' : `${Math.max(0, limit - used)}回`;
+
+                  return (
+                    <div key={key}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          {FEATURE_NAMES[key]}
+                        </span>
+                        <span className="text-sm text-gray-600">
+                          {used} / {limit === 999 ? '∞' : limit}回
+                          <span className="ml-2 text-purple-600 font-medium">
+                            (残り{remaining})
+                          </span>
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            percentage >= 100
+                              ? 'bg-red-500'
+                              : percentage >= 80
+                              ? 'bg-yellow-500'
+                              : 'bg-gradient-to-r from-purple-600 to-pink-600'
+                          }`}
+                          style={{ width: `${Math.min(percentage, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {userStats.planType === 'free' && (
+                <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <p className="text-sm text-purple-800">
+                    💡 プランをアップグレードすると、より多くの占いをご利用いただけます！
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 最新の占い結果 */}
         <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
