@@ -1,6 +1,8 @@
+// src/lib/firebase-admin.ts
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
+// 既に初期化されているかチェック
 if (!getApps().length) {
   initializeApp({
     credential: cert({

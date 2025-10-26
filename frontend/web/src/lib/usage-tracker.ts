@@ -1,8 +1,7 @@
 // src/lib/usage-tracker.ts
 // 使用回数追跡とプラン制限チェックのヘルパー関数
 
-import { doc, getDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
-import { db } from './firebase';
+import { adminDb } from './firebase-admin';
 import { PLANS } from './plans';
 
 /**
@@ -37,7 +36,7 @@ export interface UsageLimitResult {
 }
 
 /**
- * ユーザーの使用制限をチェック
+ * Admin SDKを使った使用制限チェック
  * 
  * @param userId - ユーザーID
  * @param usageField - チェックする使用回数フィールド
@@ -48,22 +47,26 @@ export async function checkUsageLimit(
   usageField: UsageField
 ): Promise<UsageLimitResult> {
   try {
-    // ユーザー情報を取得
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    // Admin SDKでユーザー情報を取得
+    const userRef = adminDb.collection('users').doc(userId);
+    const userDoc = await userRef.get();
 
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       throw new Error('User not found');
     }
 
-    const userData = userDoc.data();
+    const userData = userDoc.data()!;
     const subscription = userData.subscription || 'free';
     const currentMonth = getCurrentMonth();
     const userMonth = userData.currentMonth || '';
 
-    // 月が変わっていたら使用回数は0としてカウント
+    // 月が変わっていたら使用回数は0としてカウント（有料プランのみ）
     let currentUsage = 0;
-    if (userMonth === currentMonth) {
+    if (subscription !== 'free' && userMonth !== currentMonth) {
+      // 有料プランで月が変わっている場合は0からスタート
+      currentUsage = 0;
+    } else {
+      // 無料プランまたは同じ月の場合は既存の値を使用
       currentUsage = userData[usageField] || 0;
     }
 
@@ -105,9 +108,12 @@ export async function checkUsageLimit(
     const allowed = currentUsage < featureLimit;
     const remaining = Math.max(0, featureLimit - currentUsage);
 
-    // 次のリセット日（来月1日）
-    const now = new Date();
-    const resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    // 次のリセット日（来月1日）- 無料プランの場合はnull
+    let resetDate;
+    if (subscription !== 'free') {
+      const now = new Date();
+      resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    }
 
     return {
       allowed,
@@ -123,8 +129,8 @@ export async function checkUsageLimit(
 }
 
 /**
- * 使用回数を記録（増加）
- * 月が変わっていた場合は自動的にリセットしてから増加
+ * Admin SDKを使った使用回数記録（増加）
+ * 有料プランの場合のみ月が変わったら自動的にリセット
  * 
  * @param userId - ユーザーID
  * @param usageField - 増加させる使用回数フィールド
@@ -134,23 +140,24 @@ export async function trackUsage(
   usageField: UsageField
 ): Promise<void> {
   try {
-    const userRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userRef);
+    const userRef = adminDb.collection('users').doc(userId);
+    const userDoc = await userRef.get();
 
-    if (!userDoc.exists()) {
+    if (!userDoc.exists) {
       throw new Error('User not found');
     }
 
-    const userData = userDoc.data();
+    const userData = userDoc.data()!;
+    const subscription = userData.subscription || 'free';
     const currentMonth = getCurrentMonth();
     const userMonth = userData.currentMonth || '';
 
-    // 月が変わっていた場合はリセット
-    if (userMonth !== currentMonth) {
+    // 有料プランの場合のみ月次リセット
+    if (subscription !== 'free' && userMonth !== currentMonth) {
       console.log(`📅 月が変わりました: ${userMonth} → ${currentMonth}`);
-      console.log('🔄 使用回数をリセットします');
+      console.log(`🔄 ${subscription}プランの使用回数をリセットします`);
 
-      await updateDoc(userRef, {
+      await userRef.update({
         readingCount: 0,
         palmReadingCount: 0,
         ichingCount: 0,
@@ -158,20 +165,26 @@ export async function trackUsage(
         compatibilityCount: 0,
         currentMonth: currentMonth,
         [usageField]: 1, // 今回の使用分を記録
-        lastReadingAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        lastReadingAt: new Date(),
+        updatedAt: new Date(),
       });
 
       console.log('✅ リセット完了 & 使用回数を記録');
     } else {
-      // 通常の増加
-      await updateDoc(userRef, {
-        [usageField]: increment(1),
-        lastReadingAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      // 通常の増加（無料プランは永遠にカウントアップ）
+      const currentValue = userData[usageField] || 0;
+      await userRef.update({
+        [usageField]: currentValue + 1,
+        lastReadingAt: new Date(),
+        updatedAt: new Date(),
       });
 
-      console.log(`✅ ${usageField} を +1 しました`);
+      console.log(`✅ ${usageField} を +1 しました (${currentValue} → ${currentValue + 1})`);
+      
+      // 無料プランの場合は警告ログ
+      if (subscription === 'free') {
+        console.log(`⚠️ 無料プラン: 使用回数は永続的にカウント（リセットなし）`);
+      }
     }
   } catch (error) {
     console.error('Error tracking usage:', error);
@@ -210,13 +223,21 @@ export function getUsageLimitMessage(
   }
 
   if (!result.allowed) {
-    const resetDateStr = result.resetDate 
-      ? result.resetDate.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
-      : '来月1日';
+    if (subscription === 'free') {
+      // 無料プランの場合はリセット日なし
+      return `今月の${featureName}の利用回数上限（${result.limit}回）に達しました。\n\n` +
+             `無料プランの使用回数は月次リセットされません。\n\n` +
+             `続けてご利用したい場合は、プランをアップグレードしてください!`;
+    } else {
+      // 有料プランの場合はリセット日を表示
+      const resetDateStr = result.resetDate 
+        ? result.resetDate.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
+        : '来月1日';
 
-    return `今月の${featureName}の利用回数上限（${result.limit}回）に達しました。\n\n` +
-           `${resetDateStr}にリセットされます。\n\n` +
-           `今すぐ続けたい場合は、プランをアップグレードしてください!`;
+      return `今月の${featureName}の利用回数上限（${result.limit}回）に達しました。\n\n` +
+             `${resetDateStr}にリセットされます。\n\n` +
+             `今すぐ続けたい場合は、プランをアップグレードしてください!`;
+    }
   }
 
   return `${featureName}を利用できます（残り${result.remaining}回）`;
@@ -240,9 +261,9 @@ export async function checkAndTrackUsage(
 
     // 制限に達している場合
     if (!result.allowed) {
-      const userRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      const subscription = userDoc.exists() ? userDoc.data().subscription : 'free';
+      const userRef = adminDb.collection('users').doc(userId);
+      const userDoc = await userRef.get();
+      const subscription = userDoc.exists ? userDoc.data()!.subscription : 'free';
       
       return {
         allowed: false,

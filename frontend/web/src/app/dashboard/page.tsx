@@ -145,9 +145,9 @@ export default function DashboardPage() {
         const user = auth.currentUser;
         if (!user) return;
 
-        const statsDoc = await getDoc(doc(db, 'userStats', user.uid));
-        if (statsDoc.exists()) {
-          const data = statsDoc.data();
+        const userDoc = await getDoc(doc(db, 'users', user.uid));  // ✅ users に変更
+        if (userDoc.exists()) {
+          const data = userDoc.data();
           setUserStats({
             readingCount: data.readingCount || 0,
             palmReadingCount: data.palmReadingCount || 0,
@@ -155,7 +155,7 @@ export default function DashboardPage() {
             chatConsultCount: data.chatConsultCount || 0,
             compatibilityCount: data.compatibilityCount || 0,
             lastResetDate: data.lastResetDate?.toDate() || new Date(),
-            planType: data.planType || 'free',
+            planType: data.subscription || 'free',  // ✅ subscription に変更
           });
         } else {
           setUserStats({
