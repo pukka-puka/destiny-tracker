@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
@@ -21,6 +21,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { PLANS } from '@/lib/plans';
 
 interface Reading {
   id: string;
@@ -40,12 +41,21 @@ interface Reading {
   createdAt: any;
 }
 
+interface UserProfile {
+  subscription: 'free' | 'basic' | 'premium';
+  readingCount?: number;
+  palmReadingCount?: number;
+  chatConsultCount?: number;
+  compatibilityCount?: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [latestReading, setLatestReading] = useState<Reading | null>(null);
   const [readingHistory, setReadingHistory] = useState<Reading[]>([]);
   const [authReady, setAuthReady] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   const defaultParameters = {
     love: 70,
@@ -61,6 +71,7 @@ export default function DashboardPage() {
       if (user) {
         console.log('認証済みユーザー:', user.uid);
         setAuthReady(true);
+        await loadUserProfile(user.uid);
         await loadDashboardData(user.uid);
       } else {
         console.log('未認証 - ログインページへ');
@@ -70,6 +81,26 @@ export default function DashboardPage() {
 
     return () => unsubscribe();
   }, [router]);
+
+  const loadUserProfile = async (userId: string) => {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const userDocSnap = await getDoc(userDocRef);
+      
+      if (userDocSnap.exists()) {
+        const data = userDocSnap.data() as UserProfile;
+        setUserProfile(data);
+        console.log('ユーザープロファイル:', data);
+      } else {
+        console.log('ユーザープロファイルが見つかりません');
+        // デフォルト値を設定
+        setUserProfile({ subscription: 'free' });
+      }
+    } catch (error) {
+      console.error('ユーザープロファイル読み込みエラー:', error);
+      setUserProfile({ subscription: 'free' });
+    }
+  };
 
   const loadDashboardData = async (userId: string) => {
     try {
@@ -173,36 +204,34 @@ export default function DashboardPage() {
   // 新機能カード
   const newFeatures = [
     {
-      title: '易占い',
-      description: '3000年の歴史を持つ東洋の叡智',
-      icon: BookOpen,
-      color: 'from-amber-500 to-orange-500',
-      path: '/iching',
-      badge: 'NEW'
-    },
-    {
-      title: 'AIチャット相談',
-      description: '24時間いつでも相談できる',
+      title: 'AI相談',
+      description: 'AIキャラと悩み相談',
       icon: MessageCircle,
-      color: 'from-indigo-500 to-purple-500',
       path: '/chat',
+      color: 'from-blue-500 to-cyan-500',
       badge: 'NEW'
     },
     {
-      title: '相性診断',
-      description: '二人の運命の相性を分析',
-      icon: Heart,
-      color: 'from-rose-500 to-pink-500',
-      path: '/compatibility',
+      title: '易占い',
+      description: '古代の知恵で未来を占う',
+      icon: BookOpen,
+      path: '/iching',
+      color: 'from-green-500 to-emerald-500',
       badge: 'NEW'
+    },
+    {
+      title: '相性占い',
+      description: '二人の相性を診断',
+      icon: Heart,
+      path: '/compatibility',
+      color: 'from-pink-500 to-rose-500'
     },
     {
       title: '占い履歴',
-      description: '過去の占い結果を振り返る',
+      description: 'これまでの占い結果',
       icon: History,
-      color: 'from-slate-500 to-gray-500',
       path: '/history',
-      badge: ''
+      color: 'from-purple-500 to-violet-500'
     }
   ];
 
@@ -210,8 +239,8 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
         <div className="text-center">
-          <Sparkles className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-4" />
-          <p className="text-purple-600">読み込み中...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4"></div>
+          <p className="text-gray-600">読み込み中...</p>
         </div>
       </div>
     );
@@ -220,14 +249,39 @@ export default function DashboardPage() {
   if (!latestReading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-        <div className="max-w-4xl mx-auto pt-20">
-          <div className="bg-white rounded-2xl p-12 text-center shadow-lg">
-            <Sparkles className="w-16 h-16 text-purple-400 mx-auto mb-6" />
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">
-              まだ占いをしていません
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8 pt-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+                ダッシュボード
+              </h1>
+              <div className="flex items-center gap-2">
+                <p className="text-gray-600">あなたの運勢と成長の記録</p>
+                {userProfile && (
+                  <>
+                    <span className="text-gray-400">•</span>
+                    <span className="text-sm font-semibold text-purple-600">
+                      {PLANS[userProfile.subscription].name}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => router.push('/profile')}
+              className="p-3 rounded-full bg-white shadow-md hover:shadow-lg transition"
+            >
+              <UserIcon className="w-6 h-6 text-purple-600" />
+            </button>
+          </div>
+
+          <div className="bg-white rounded-2xl p-12 shadow-lg text-center">
+            <Sparkles className="w-16 h-16 text-purple-600 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+              まだ占い結果がありません
             </h2>
             <p className="text-gray-600 mb-8">
-              最初の占いをして、あなたの運命を知りましょう！
+              最初の占いを始めて、あなたの運勢を確認しましょう
             </p>
             <div className="flex gap-4 justify-center">
               <button
@@ -261,7 +315,17 @@ export default function DashboardPage() {
             <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
               ダッシュボード
             </h1>
-            <p className="text-gray-600">あなたの運勢と成長の記録</p>
+            <div className="flex items-center gap-2">
+              <p className="text-gray-600">あなたの運勢と成長の記録</p>
+              {userProfile && (
+                <>
+                  <span className="text-gray-400">•</span>
+                  <span className="text-sm font-semibold text-purple-600">
+                    {PLANS[userProfile.subscription].name}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           <button
             onClick={() => router.push('/profile')}

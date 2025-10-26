@@ -1,0 +1,31 @@
+// ユーザー情報の型定義
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  subscription: 'free' | 'basic' | 'premium';
+  credits: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  lastLogin: Timestamp;
+  palmData?: {
+    imageUrl?: string;
+    analysis?: any;
+    analyzedAt?: Timestamp;
+  };
+  destinyParameters?: {
+    love: number;
+    money: number;
+    health: number;
+    work: number;
+    social: number;
+    overall: number;
+  };
+  // Stripe関連フィールド
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete';
+  subscriptionCurrentPeriodEnd?: Date;
+  subscriptionCancelAtPeriodEnd?: boolean;
+}
