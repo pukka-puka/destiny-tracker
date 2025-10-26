@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { checkAndTrackUsage } from '@/lib/usage-tracker';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -46,7 +47,7 @@ async function convertImageToSafeFormat(imageUrl: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageUrl } = await request.json();
+    const { imageUrl, userId } = await request.json();
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -54,6 +55,36 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ===== 使用制限チェック & 使用回数記録（追加） =====
+    if (userId) {
+      console.log('📊 手相占いの使用制限をチェック中...');
+      
+      try {
+        const usageCheck = await checkAndTrackUsage(userId, 'palmReadingCount');
+        
+        if (!usageCheck.allowed) {
+          console.log('❌ 使用制限に達しています');
+          return NextResponse.json({
+            success: false,
+            error: 'Usage limit reached',
+            message: usageCheck.message,
+            limit: usageCheck.result.limit,
+            currentUsage: usageCheck.result.currentUsage,
+            remaining: usageCheck.result.remaining,
+            resetDate: usageCheck.result.resetDate,
+          }, { status: 403 });
+        }
+        
+        console.log('✅ 使用制限OK & 使用回数を記録しました');
+      } catch (usageError: any) {
+        console.error('⚠️ 使用制限チェックエラー:', usageError);
+        // 使用制限チェックのエラーは手相解析処理を止めない（フォールバック）
+      }
+    } else {
+      console.warn('⚠️ userIdが提供されていません。使用制限チェックをスキップします。');
+    }
+    // ===== ここまで追加 =====
 
     console.log('🔍 手相解析開始:', imageUrl);
 
