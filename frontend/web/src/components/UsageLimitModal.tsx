@@ -8,7 +8,7 @@ interface UsageLimitModalProps {
   isOpen: boolean;
   onClose: () => void;
   featureName: string;
-  limit?: number;  // ← オプショナルに変更
+  limit?: number;
   resetDate?: Date;
   currentPlan?: string;
 }
@@ -25,9 +25,12 @@ export default function UsageLimitModal({
 
   if (!isOpen) return null;
 
+  // 無料プランかどうか判定
+  const isFreePlan = currentPlan === 'free';
+
+  // リセット日の表示文字列（有料プランのみ）
   const resetDateStr = resetDate
     ? new Date(resetDate).toLocaleDateString('ja-JP', { 
-        year: 'numeric',
         month: 'long', 
         day: 'numeric' 
       })
@@ -59,23 +62,36 @@ export default function UsageLimitModal({
             </div>
           </div>
 
+          {/* タイトル - プラン別表示 */}
           <h2 className="text-2xl font-bold text-center text-white mb-2">
-            今月の利用上限に達しました
+            {isFreePlan ? '利用上限に達しました' : '今月の利用上限に達しました'}
           </h2>
           
+          {/* 説明文 - プラン別表示 */}
           <p className="text-center text-gray-300 text-sm">
-            {featureName}の月間利用回数{limit ? `（${limit}回）` : ''}を使い切りました
+            {featureName}の{isFreePlan ? '累計' : '月間'}利用回数{limit ? `（${limit}回）` : ''}を使い切りました
           </p>
         </div>
 
         {/* 本文 */}
         <div className="px-8 pb-8 space-y-6">
           
-          {/* リセット日 */}
-          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-4 border border-white/10">
-            <p className="text-sm text-gray-400 mb-1">次回リセット日</p>
-            <p className="text-lg font-bold text-white">{resetDateStr}</p>
-          </div>
+          {/* リセット日 - 有料プランのみ表示 */}
+          {!isFreePlan && (
+            <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-4 border border-white/10">
+              <p className="text-sm text-gray-400 mb-1">次回リセット日</p>
+              <p className="text-lg font-bold text-white">{resetDateStr}</p>
+            </div>
+          )}
+
+          {/* 無料プランの場合の説明 */}
+          {isFreePlan && (
+            <div className="bg-yellow-500/10 backdrop-blur-xl rounded-2xl p-4 border border-yellow-500/30">
+              <p className="text-sm text-yellow-200 text-center">
+                無料プランの使用回数はリセットされません
+              </p>
+            </div>
+          )}
 
           {/* アップグレード提案 */}
           <div className="space-y-3">

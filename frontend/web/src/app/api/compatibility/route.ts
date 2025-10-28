@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const { person1, person2, category, userId } = await request.json();
 
-    // ===== 使用制限チェック & 使用回数記録（追加） =====
+    // ===== 使用制限チェック & 使用回数記録 =====
     if (userId) {
       console.log('📊 相性診断の使用制限をチェック中...');
       
@@ -81,7 +81,6 @@ export async function POST(request: NextRequest) {
     } else {
       console.warn('⚠️ userIdが提供されていません。使用制限チェックをスキップします。');
     }
-    // ===== ここまで追加 =====
 
     // 数秘術の計算
     const lifePath1 = calculateLifePath(person1.birthDate);
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
     const zodiac1 = getZodiacSign(person1.birthDate);
     const zodiac2 = getZodiacSign(person2.birthDate);
 
-    // カテゴリーのマッピング（型安全に）
+    // カテゴリーのマッピング
     const categoryTextMap: Record<string, string> = {
       love: '恋愛',
       friendship: '友情',
@@ -116,20 +115,25 @@ export async function POST(request: NextRequest) {
 
 【診断タイプ】: ${categoryText}相性
 
-以下のJSON形式で相性診断の結果を返してください：
+以下のJSON形式で相性診断の結果を返してください。JSON以外の説明文は一切含めず、純粋なJSON形式のみを返してください：
 
 {
-  "overall": 総合相性スコア(1-100),
-  "love": 恋愛相性スコア(1-100),
-  "friendship": 友情相性スコア(1-100),
-  "work": 仕事相性スコア(1-100),
-  "communication": コミュニケーション相性スコア(1-100),
-  "trust": 信頼関係スコア(1-100),
-  "interpretation": "詳細な解釈（800文字程度）",
+  "overall": 総合相性スコア(1-100の数値),
+  "love": 恋愛相性スコア(1-100の数値),
+  "friendship": 友情相性スコア(1-100の数値),
+  "work": 仕事相性スコア(1-100の数値),
+  "communication": コミュニケーション相性スコア(1-100の数値),
+  "trust": 信頼関係スコア(1-100の数値),
+  "interpretation": "詳細な解釈（800文字程度）。改行は含めずに一続きの文章として記述。",
   "strengths": ["強み1", "強み2", "強み3"],
   "challenges": ["課題1", "課題2", "課題3"],
   "advice": ["アドバイス1", "アドバイス2", "アドバイス3"]
 }
+
+【重要な注意事項】
+- interpretationフィールド内では改行文字を使用せず、一続きの文章として記述してください
+- JSON形式として正しく解析可能な形式で出力してください
+- 制御文字（\\n, \\t など）は使用しないでください
 
 【分析のポイント】
 1. 数秘術の観点から相性を分析
@@ -140,7 +144,7 @@ export async function POST(request: NextRequest) {
 スコアは現実的な範囲で設定し、解釈は具体的で前向きな内容にしてください。`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -152,13 +156,36 @@ export async function POST(request: NextRequest) {
       ? message.content[0].text 
       : '';
 
-    // JSONを抽出
+    console.log('📝 Claude API Raw Response:', responseText.substring(0, 500));
+
+    // JSONを抽出（より厳密に）
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error('❌ JSON形式が見つかりませんでした');
       throw new Error('JSON形式のレスポンスが取得できませんでした');
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    let jsonString = jsonMatch[0];
+    
+    // 制御文字をエスケープ（念のため）
+    jsonString = jsonString
+      .replace(/\n/g, ' ')  // 改行を半角スペースに
+      .replace(/\r/g, '')   // キャリッジリターンを削除
+      .replace(/\t/g, ' ')  // タブを半角スペースに
+      .replace(/[\x00-\x1F\x7F]/g, ''); // その他の制御文字を削除
+
+    console.log('🔧 Cleaned JSON:', jsonString.substring(0, 300));
+
+    let result;
+    try {
+      result = JSON.parse(jsonString);
+    } catch (parseError) {
+      console.error('❌ JSONパースエラー:', parseError);
+      console.error('❌ 問題のJSON文字列:', jsonString);
+      throw new Error('JSON解析に失敗しました');
+    }
+
+    console.log('✅ 相性診断成功');
 
     return NextResponse.json({ 
       success: true,
@@ -170,7 +197,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false,
-        error: '相性診断に失敗しました' 
+        error: error instanceof Error ? error.message : '相性診断に失敗しました'
       },
       { status: 500 }
     );

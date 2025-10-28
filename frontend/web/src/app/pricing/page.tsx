@@ -3,8 +3,8 @@
 
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { PLANS, PLAN_COMPARISON } from '@/lib/plans';
-import { Check, Sparkles, Zap, Crown } from 'lucide-react';
+import { PLANS } from '@/lib/plans';
+import { Check, Sparkles, Zap, Crown, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export default function PricingPage() {
@@ -95,69 +95,82 @@ export default function PricingPage() {
               key={plan.id}
               className={`relative bg-white/5 backdrop-blur-xl rounded-3xl p-8 border-2 transition-all hover:scale-105 ${
                 plan.recommended
-                  ? 'border-yellow-500 shadow-2xl shadow-yellow-500/20'
-                  : 'border-white/10 hover:border-white/30'
+                  ? 'border-purple-500 shadow-2xl shadow-purple-500/50'
+                  : 'border-white/10'
               }`}
             >
               {/* おすすめバッジ */}
               {plan.recommended && (
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg">
                   おすすめ
                 </div>
               )}
 
+              {/* 現在のプランバッジ */}
+              {isCurrentPlan(plan.id) && (
+                <div className="absolute -top-4 right-4 bg-green-500 text-white px-4 py-1 rounded-full text-xs font-bold">
+                  現在のプラン
+                </div>
+              )}
+
               {/* アイコン */}
-              <div
-                className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 ${
-                  plan.id === 'free'
-                    ? 'bg-gradient-to-br from-purple-500 to-purple-700'
-                    : plan.id === 'basic'
-                    ? 'bg-gradient-to-br from-blue-500 to-blue-700'
-                    : 'bg-gradient-to-br from-yellow-500 to-orange-500'
-                }`}
-              >
-                <div className="text-white">{getPlanIcon(plan.id)}</div>
-              </div>
-
-              {/* プラン名 */}
-              <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
-              <p className="text-gray-400 text-sm mb-6">{plan.description}</p>
-
-              {/* 価格 */}
-              <div className="mb-8">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-white">
-                    ¥{plan.price.toLocaleString()}
-                  </span>
-                  {plan.price > 0 && (
-                    <span className="text-gray-400">/月</span>
-                  )}
+              <div className="flex justify-center mb-6">
+                <div
+                  className={`w-20 h-20 rounded-full flex items-center justify-center ${
+                    plan.id === 'free'
+                      ? 'bg-gradient-to-br from-gray-500 to-gray-700'
+                      : plan.id === 'basic'
+                      ? 'bg-gradient-to-br from-blue-500 to-blue-700'
+                      : 'bg-gradient-to-br from-purple-500 to-pink-600'
+                  }`}
+                >
+                  {getPlanIcon(plan.id)}
                 </div>
               </div>
 
-              {/* 機能リスト */}
-              <div className="space-y-3 mb-8">
-                {plan.highlights.map((feature, i) => (
-                  <div key={i} className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center mt-0.5">
-                      <Check className="w-3 h-3 text-green-400" />
-                    </div>
-                    <span className="text-gray-300 text-sm">{feature}</span>
-                  </div>
-                ))}
+              {/* プラン名 */}
+              <h3 className="text-3xl font-bold text-white text-center mb-2">
+                {plan.name}
+              </h3>
+
+              {/* 価格 */}
+              <div className="text-center mb-6">
+                {plan.price === 0 ? (
+                  <span className="text-4xl font-bold text-white">無料</span>
+                ) : (
+                  <>
+                    <span className="text-4xl font-bold text-white">
+                      ¥{plan.price.toLocaleString()}
+                    </span>
+                    <span className="text-gray-400 ml-2">/月</span>
+                  </>
+                )}
               </div>
 
-              {/* CTAボタン */}
+              {/* 説明 */}
+              <p className="text-gray-400 text-center mb-8">{plan.description}</p>
+
+              {/* 機能リスト */}
+              <ul className="space-y-4 mb-8">
+                {plan.highlights.map((highlight, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-gray-300">{highlight}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* ボタン */}
               <button
                 onClick={() => handleSubscribe(plan.priceId, plan.id)}
                 disabled={loading === plan.id || isCurrentPlan(plan.id)}
-                className={`w-full py-4 rounded-xl font-bold text-white transition-all ${
+                className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition-all ${
                   isCurrentPlan(plan.id)
-                    ? 'bg-gray-600 cursor-not-allowed'
+                    ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                     : plan.recommended
-                    ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 shadow-lg'
-                    : 'bg-white/10 hover:bg-white/20'
-                }`}
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg'
+                    : 'bg-white/10 hover:bg-white/20 text-white border border-white/20'
+                } disabled:opacity-50`}
               >
                 {loading === plan.id
                   ? '処理中...'
@@ -165,95 +178,194 @@ export default function PricingPage() {
                   ? '現在のプラン'
                   : plan.price === 0
                   ? '無料で始める'
-                  : 'アップグレード'}
+                  : 'プランを選択'}
               </button>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 機能比較表 */}
-      <div className="max-w-7xl mx-auto px-4 pb-16">
+      {/* プラン比較表 */}
+      <div className="max-w-7xl mx-auto px-4 pb-24">
         <h2 className="text-3xl font-bold text-white text-center mb-12">
-          プラン機能比較
+          詳細な機能比較
         </h2>
-        <div className="bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden">
+
+        <div className="bg-white/5 backdrop-blur-xl rounded-3xl overflow-hidden border border-white/10">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="px-6 py-4 text-left text-white font-semibold">
-                    機能
-                  </th>
-                  <th className="px-6 py-4 text-center text-white font-semibold">
-                    無料
-                  </th>
-                  <th className="px-6 py-4 text-center text-white font-semibold">
-                    ベーシック
-                  </th>
-                  <th className="px-6 py-4 text-center text-white font-semibold bg-yellow-500/10">
-                    プレミアム
-                  </th>
+                  <th className="px-6 py-4 text-left text-white font-bold">機能</th>
+                  <th className="px-6 py-4 text-center text-white font-bold">無料プラン</th>
+                  <th className="px-6 py-4 text-center text-white font-bold">Basicプラン</th>
+                  <th className="px-6 py-4 text-center text-white font-bold">Premiumプラン</th>
                 </tr>
               </thead>
               <tbody>
-                {PLAN_COMPARISON.map((row, i) => (
-                  <tr
-                    key={i}
-                    className="border-b border-white/5 hover:bg-white/5"
-                  >
-                    <td className="px-6 py-4 text-gray-300">{row.feature}</td>
-                    <td className="px-6 py-4 text-center text-gray-400">
-                      {row.free}
-                    </td>
-                    <td className="px-6 py-4 text-center text-gray-400">
-                      {row.basic}
-                    </td>
-                    <td className="px-6 py-4 text-center text-white bg-yellow-500/5">
-                      {row.premium}
-                    </td>
-                  </tr>
-                ))}
+                {/* 月額料金 */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">月額料金</td>
+                  <td className="px-6 py-4 text-center text-white">¥0</td>
+                  <td className="px-6 py-4 text-center text-white">¥980</td>
+                  <td className="px-6 py-4 text-center text-white">¥2,980</td>
+                </tr>
+
+                {/* タロット占い */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">タロット占い</td>
+                  <td className="px-6 py-4 text-center text-gray-400">累計3回</td>
+                  <td className="px-6 py-4 text-center text-gray-300">月100回</td>
+                  <td className="px-6 py-4 text-center text-green-400 font-bold">無制限</td>
+                </tr>
+
+                {/* 手相占い */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">手相占い</td>
+                  <td className="px-6 py-4 text-center text-gray-400">累計1回</td>
+                  <td className="px-6 py-4 text-center text-gray-300">月40回</td>
+                  <td className="px-6 py-4 text-center text-green-400 font-bold">無制限</td>
+                </tr>
+
+                {/* 易占い */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">易占い</td>
+                  <td className="px-6 py-4 text-center text-gray-400">累計2回</td>
+                  <td className="px-6 py-4 text-center text-gray-300">月40回</td>
+                  <td className="px-6 py-4 text-center text-green-400 font-bold">無制限</td>
+                </tr>
+
+                {/* AIチャット */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">AIチャット</td>
+                  <td className="px-6 py-4 text-center text-gray-400">利用不可</td>
+                  <td className="px-6 py-4 text-center text-gray-300">月100回</td>
+                  <td className="px-6 py-4 text-center text-green-400 font-bold">無制限</td>
+                </tr>
+
+                {/* 相性診断 */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">相性診断</td>
+                  <td className="px-6 py-4 text-center text-gray-400">累計1回</td>
+                  <td className="px-6 py-4 text-center text-gray-300">月10回</td>
+                  <td className="px-6 py-4 text-center text-green-400 font-bold">無制限</td>
+                </tr>
+
+                {/* 履歴保存 - 全プラン無期限 */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">履歴保存</td>
+                  <td className="px-6 py-4 text-center text-white">無期限</td>
+                  <td className="px-6 py-4 text-center text-white">無期限</td>
+                  <td className="px-6 py-4 text-center text-white">無期限</td>
+                </tr>
+
+                {/* 広告表示 */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">広告表示</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="text-red-400">あり</span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="text-green-400">なし</span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="text-green-400">なし</span>
+                  </td>
+                </tr>
+
+                {/* PDFエクスポート */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">PDFエクスポート</td>
+                  <td className="px-6 py-4 text-center">
+                    <X className="w-5 h-5 text-gray-600 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <Check className="w-5 h-5 text-green-400 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <Check className="w-5 h-5 text-green-400 mx-auto" />
+                  </td>
+                </tr>
+
+                {/* 詳細分析 */}
+                <tr className="border-b border-white/10">
+                  <td className="px-6 py-4 text-gray-300 font-medium">詳細分析</td>
+                  <td className="px-6 py-4 text-center">
+                    <X className="w-5 h-5 text-gray-600 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <X className="w-5 h-5 text-gray-600 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <Check className="w-5 h-5 text-green-400 mx-auto" />
+                  </td>
+                </tr>
+
+                {/* 優先サポート */}
+                <tr>
+                  <td className="px-6 py-4 text-gray-300 font-medium">優先サポート</td>
+                  <td className="px-6 py-4 text-center">
+                    <X className="w-5 h-5 text-gray-600 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <X className="w-5 h-5 text-gray-600 mx-auto" />
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <Check className="w-5 h-5 text-green-400 mx-auto" />
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
+
+        {/* 注意事項 */}
+        <div className="mt-8 bg-blue-500/10 border border-blue-500/30 rounded-2xl p-6">
+          <h3 className="text-white font-bold mb-3">📝 プランについての注意事項</h3>
+          <ul className="space-y-2 text-gray-300 text-sm">
+            <li>• 無料プランの各機能の利用回数は「累計」です（リセットされません）</li>
+            <li>• Basic/Premiumプランの各機能の利用回数は「月間」です（毎月1日にリセット）</li>
+            <li>• すべてのプランで履歴は無期限で保存されます</li>
+            <li>• いつでもプラン変更・キャンセルが可能です</li>
+            <li>• キャンセルは次回更新日まで有効です</li>
+          </ul>
+        </div>
       </div>
 
-      {/* FAQ */}
+      {/* よくある質問 */}
       <div className="max-w-4xl mx-auto px-4 pb-24">
         <h2 className="text-3xl font-bold text-white text-center mb-12">
           よくある質問
         </h2>
+
         <div className="space-y-6">
-          {[
-            {
-              q: 'いつでもプランを変更できますか?',
-              a: 'はい、いつでも変更可能です。アップグレードは即座に適用され、ダウングレードは次の請求日から有効になります。',
-            },
-            {
-              q: '支払い方法は何が使えますか?',
-              a: 'クレジットカード（Visa、Mastercard、American Express、JCB）がご利用いただけます。',
-            },
-            {
-              q: '無料プランでどのくらい使えますか?',
-              a: 'タロット占いは月3回、手相占いは月1回、易占いは月2回ご利用いただけます。',
-            },
-            {
-              q: 'キャンセル方法は?',
-              a: 'プロフィールページからいつでもキャンセルできます。残りの期間は引き続きご利用いただけます。',
-            },
-          ].map((faq, i) => (
-            <div
-              key={i}
-              className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10"
-            >
-              <h3 className="text-lg font-semibold text-white mb-2">
-                {faq.q}
-              </h3>
-              <p className="text-gray-400">{faq.a}</p>
-            </div>
-          ))}
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+            <h3 className="text-white font-bold mb-2">いつでもプランを変更できますか?</h3>
+            <p className="text-gray-400">
+              はい、いつでも変更可能です。アップグレードは即座に適用され、ダウングレードは次の請求日から適用されます。
+            </p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+            <h3 className="text-white font-bold mb-2">支払い方法は何が使えますか?</h3>
+            <p className="text-gray-400">
+              クレジットカード（Visa、Mastercard、American Express、JCB）がご利用いただけます。
+            </p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+            <h3 className="text-white font-bold mb-2">無料プランでどのくらい使えますか?</h3>
+            <p className="text-gray-400">
+              タロット占いは累計3回、手相占いは累計1回、易占いは累計2回、相性診断は累計1回ご利用いただけます。
+            </p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-6 border border-white/10">
+            <h3 className="text-white font-bold mb-2">キャンセル方法は?</h3>
+            <p className="text-gray-400">
+              プロフィールページからいつでもキャンセルできます。残りの期間は引き続きご利用いただけます。
+            </p>
+          </div>
         </div>
       </div>
     </div>

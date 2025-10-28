@@ -40,16 +40,16 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
       iching: { limit: 2, period: 'month' },
       aiChat: { limit: 0, period: 'month' },
       compatibility: { limit: 1, period: 'month' },
-      history: { days: 30 },
+      history: { days: -1 }, // 無期限
       ads: true,
       priority: false,
     },
     highlights: [
-      'タロット占い 月3回',
-      '手相占い 月1回',
-      '易占い 月2回',
-      '相性診断 月1回',
-      '履歴30日間保存',
+      'タロット占い 累計3回',
+      '手相占い 累計1回',
+      '易占い 累計2回',
+      '相性診断 累計1回',
+      '履歴無期限保存',
     ],
   },
   basic: {
@@ -60,25 +60,25 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
     priceId: process.env.NEXT_PUBLIC_STRIPE_BASIC_PRICE_ID,
     description: '定期的に占いを楽しみたい方に最適',
     features: {
-      tarot: { limit: -1 }, // -1は無制限
-      palm: { limit: 5, period: 'month' },
-      iching: { limit: 10, period: 'month' },
+      tarot: { limit: 100, period: 'month' },
+      palm: { limit: 40, period: 'month' },
+      iching: { limit: 40, period: 'month' },
       aiChat: { limit: 100, period: 'month' },
       compatibility: { limit: 10, period: 'month' },
-      history: { days: 365 },
+      history: { days: -1 }, // 無期限
       ads: false,
       priority: false,
       pdfExport: true,
     },
     highlights: [
-      'タロット占い 無制限',
-      '手相占い 月5回',
-      '易占い 月10回',
-      'AIチャット 月100メッセージ',
+      'タロット占い 月100回',
+      '手相占い 月40回',
+      '易占い 月40回',
+      'AIチャット 月100回',
       '相性診断 月10回',
       '広告なし',
       'PDFエクスポート',
-      '履歴1年間保存',
+      '履歴無期限保存',
     ],
   },
   premium: {
@@ -95,7 +95,7 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
       iching: { limit: -1 },
       aiChat: { limit: -1 },
       compatibility: { limit: -1 },
-      history: { days: -1 },
+      history: { days: -1 }, // 無期限
       ads: false,
       priority: true,
       pdfExport: true,
@@ -116,7 +116,7 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
   },
 };
 
-// 使用制限チェック関数 - EXPORTを追加
+// 使用制限チェック関数
 export function canUseFeature(
   subscription: SubscriptionTier,
   feature: keyof PlanFeatures,
@@ -137,73 +137,25 @@ export function canUseFeature(
     return { allowed: true, remaining: -1, limit: -1 };
   }
 
-  // 制限チェック
-  const remaining = limit - usageThisMonth;
-  const allowed = remaining > 0;
+  // 制限がある場合
+  const allowed = usageThisMonth < limit;
+  const remaining = Math.max(0, limit - usageThisMonth);
 
   return { allowed, remaining, limit };
 }
 
-// プラン比較用のデータ - EXPORTを追加
-export const PLAN_COMPARISON = [
-  {
-    feature: 'タロット占い',
-    free: '月3回',
-    basic: '無制限',
-    premium: '無制限',
-  },
-  {
-    feature: '手相占い',
-    free: '月1回',
-    basic: '月5回',
-    premium: '無制限',
-  },
-  {
-    feature: '易占い',
-    free: '月2回',
-    basic: '月10回',
-    premium: '無制限',
-  },
-  {
-    feature: 'AIチャット',
-    free: '利用不可',
-    basic: '月100回',
-    premium: '無制限',
-  },
-  {
-    feature: '相性診断',
-    free: '月1回',
-    basic: '月10回',
-    premium: '無制限',
-  },
-  {
-    feature: '履歴保存',
-    free: '30日間',
-    basic: '1年間',
-    premium: '無期限',
-  },
-  {
-    feature: '広告表示',
-    free: 'あり',
-    basic: 'なし',
-    premium: 'なし',
-  },
-  {
-    feature: 'PDFエクスポート',
-    free: '-',
-    basic: '○',
-    premium: '○',
-  },
-  {
-    feature: '詳細分析',
-    free: '-',
-    basic: '-',
-    premium: '○',
-  },
-  {
-    feature: '優先サポート',
-    free: '-',
-    basic: '-',
-    premium: '○',
-  },
-];
+// プラン比較用の定数
+export const PLAN_COMPARISON = {
+  features: [
+    { name: 'タロット占い', free: '累計3回', basic: '月100回', premium: '無制限' },
+    { name: '手相占い', free: '累計1回', basic: '月40回', premium: '無制限' },
+    { name: '易占い', free: '累計2回', basic: '月40回', premium: '無制限' },
+    { name: 'AIチャット', free: '利用不可', basic: '月100回', premium: '無制限' },
+    { name: '相性診断', free: '累計1回', basic: '月10回', premium: '無制限' },
+    { name: '履歴保存', free: '無期限', basic: '無期限', premium: '無期限' },
+    { name: '広告表示', free: 'あり', basic: 'なし', premium: 'なし' },
+    { name: 'PDFエクスポート', free: '-', basic: '○', premium: '○' },
+    { name: '詳細分析', free: '-', basic: '-', premium: '○' },
+    { name: '優先サポート', free: '-', basic: '-', premium: '○' },
+  ],
+};
