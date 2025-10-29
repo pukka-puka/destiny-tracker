@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 スコアは現実的な範囲で設定し、解釈は具体的で前向きな内容にしてください。`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251201',
       max_tokens: 2000,
       messages: [{
         role: 'user',

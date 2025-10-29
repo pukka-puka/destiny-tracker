@@ -87,7 +87,7 @@ ${futureHexagram ? `【之卦（未来）】
 文章は親しみやすく、しかし威厳のある占い師の語り口で書いてください。質問者を励まし、前向きな気持ちにさせる内容を心がけてください。`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-haiku-4-5-20251201',
       max_tokens: 2000,
       messages: [{
         role: 'user',

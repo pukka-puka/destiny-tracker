@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
 相談者の質問内容に必ず具体的に答え、温かみのある言葉で希望を与えながらも、現実的なアドバイスを含めてください。`;
 
         const response = await anthropic.messages.create({
-          model: 'claude-3-5-sonnet-20241022',
+          model: 'claude-sonnet-4-5-20250929',
           max_tokens: 4000,
           temperature: 0.9,
           messages: [
