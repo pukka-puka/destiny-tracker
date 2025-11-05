@@ -8,3 +8,25 @@ typings/
 # Node.js dependency directory
 node_modules/
 *.local
+
+# Development scripts (本番ビルドから除外)
+scripts/// 制限に達している場合
+if (!result.allowed) {
+  const userRef = adminDb.collection('users').doc(userId);
+  const userDoc = await userRef.get();
+  const subscription = userDoc.exists ? userDoc.data()!.subscription : 'free';
+  
+  return {
+    allowed: false,
+    message: getUsageLimitMessage(usageField, result, subscription),
+    result,
+  };
+}
+
+// 使用回数を記録
+await trackUsage(userId, usageField);
+
+return {
+  allowed: true,
+  result,
+};
