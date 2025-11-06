@@ -103,7 +103,7 @@ function SuccessContent() {
         <p className="text-sm text-gray-500 mt-6">
           ご不明な点がございましたら、
           <a
-            href="mailto:support@destiny-tracker.com"
+            href="mailto:support@shukumei.com"
             className="text-purple-400 hover:text-purple-300 underline"
           >
             サポート

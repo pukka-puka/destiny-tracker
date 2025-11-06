@@ -1,4 +1,4 @@
-# 🔮 Destiny Tracker - 革命的占いAI SaaS
+# 🔮 Shukumei - 革命的占いAI SaaS
 
 ## 概要
 データで運命を可視化し、AIで人生を導く次世代占いプラットフォーム
