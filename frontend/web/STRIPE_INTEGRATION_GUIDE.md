@@ -1,4 +1,4 @@
-# 💳 Destiny Tracker - Stripe統合完全ガイド
+# 💳 Shukumei - Stripe統合完全ガイド
 
 ## 📋 目次
 1. [実装内容](#実装内容)
@@ -90,7 +90,7 @@ frontend/web/
 
 1. ダッシュボード → 商品 → 「商品を追加」
 2. 設定:
-   - 名前: `Destiny Tracker ベーシックプラン`
+   - 名前: `Shukumei ベーシックプラン`
    - 価格: `¥980`
    - 請求期間: `月次`
    - 課金タイプ: `定期支払い`
@@ -99,7 +99,7 @@ frontend/web/
 #### プレミアムプラン
 
 1. 同様に作成:
-   - 名前: `Destiny Tracker プレミアムプラン`
+   - 名前: `Shukumei プレミアムプラン`
    - 価格: `¥2,980`
    - 請求期間: `月次`
 2. Price IDをコピー
@@ -141,8 +141,8 @@ NEXT_PUBLIC_STRIPE_PREMIUM_PRICE_ID=price_xxxxxxxxxxxxx
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 # Firebase Admin SDK（Firebaseコンソールから取得）
-FIREBASE_PROJECT_ID=destiny-tracker-prod
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@destiny-tracker-prod.iam.gserviceaccount.com
+FIREBASE_PROJECT_ID=shukumei-prod
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@shukumei-prod.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
 ```
 
@@ -351,7 +351,7 @@ vercel --prod
 
 Stripeダッシュボードで Webhook エンドポイントを本番URLに更新:
 ```
-https://destiny-tracker.vercel.app/api/stripe/webhook
+https://shukumei.vercel.app/api/stripe/webhook
 ```
 
 ---

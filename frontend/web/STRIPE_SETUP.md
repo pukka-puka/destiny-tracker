@@ -1,7 +1,7 @@
 # 💳 Stripe統合セットアップガイド
 
 ## 📋 概要
-このガイドでは、Destiny TrackerにStripe決済を統合する手順を説明します。
+このガイドでは、ShukumeiにStripe決済を統合する手順を説明します。
 
 ---
 
@@ -32,7 +32,7 @@
 
 1. ダッシュボードで「商品」→「商品を追加」
 2. 以下を入力：
-   - **名前**: Destiny Tracker ベーシックプラン
+   - **名前**: Shukumei ベーシックプラン
    - **説明**: 定期的に占いを楽しみたい方に最適
    - **料金**: ¥980
    - **請求期間**: 月次
@@ -43,7 +43,7 @@
 #### プレミアムプラン（¥2,980/月）
 
 1. 同様に新しい商品を作成：
-   - **名前**: Destiny Tracker プレミアムプラン
+   - **名前**: Shukumei プレミアムプラン
    - **説明**: すべての機能を無制限で使いたい方へ
    - **料金**: ¥2,980
    - **請求期間**: 月次
@@ -57,7 +57,7 @@
 3. 以下を設定：
    - **エンドポイントURL**: `https://yourdomain.com/api/stripe/webhook`
      - 開発環境: `http://localhost:3000/api/stripe/webhook`（Stripe CLIを使用）
-   - **説明**: Destiny Tracker Webhook
+   - **説明**: Shukumei Webhook
    - **イベント**: 以下を選択
      - `checkout.session.completed`
      - `customer.subscription.created`
@@ -120,8 +120,8 @@ Webhook処理にFirebase Admin SDKが必要です。
 `.env.local` に以下を追加（JSONファイルから値をコピー）：
 
 ```bash
-FIREBASE_PROJECT_ID=destiny-tracker-prod
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@destiny-tracker-prod.iam.gserviceaccount.com
+FIREBASE_PROJECT_ID=shukumei-prod
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@shukumei-prod.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
 ```
 
@@ -215,7 +215,7 @@ vercel env add FIREBASE_PRIVATE_KEY
 
 Stripeダッシュボードで Webhook エンドポイントを更新：
 ```
-https://destiny-tracker.vercel.app/api/stripe/webhook
+https://shukumei.vercel.app/api/stripe/webhook
 ```
 
 ---
