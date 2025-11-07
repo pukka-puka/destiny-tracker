@@ -131,6 +131,7 @@ export default function PalmPage() {
         body: JSON.stringify({
           imageUrl,
           userId: user.uid,
+          readingId: docRef.id, // ← この行を追加
         }),
       });
 
@@ -152,16 +153,13 @@ export default function PalmPage() {
       }
 
       setProgress('解析完了！結果ページへ移動します...');
-      
+
       setTimeout(() => {
         router.push(`/palm/analysis/${docRef.id}`);
       }, 2000);
-
     } catch (err) {
       console.error('❌ エラー:', err);
-      setError(
-        err instanceof Error ? err.message : 'エラーが発生しました'
-      );
+      setError(err instanceof Error ? err.message : 'エラーが発生しました');
       setUploading(false);
       setAnalyzing(false);
       setProgress('');
@@ -188,9 +186,7 @@ export default function PalmPage() {
             手相占い
             <Sparkles className="w-8 h-8 text-purple-600" />
           </h1>
-          <p className="text-gray-600">
-            あなたの手のひらから未来を読み解きます
-          </p>
+          <p className="text-gray-600">あなたの手のひらから未来を読み解きます</p>
         </div>
 
         <div className="bg-white rounded-xl shadow-xl p-8">
@@ -276,7 +272,7 @@ export default function PalmPage() {
             </div>
           )}
         </div>
-        
+
         {/* 使用制限モーダルを追加 */}
         <UsageLimitModal
           isOpen={showLimitModal}

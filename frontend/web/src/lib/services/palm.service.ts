@@ -12,40 +12,13 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { PalmReadingData } from '@/types/destiny.types';
 
-export interface PalmAnalysis {
+// 共通型からエイリアスを作成
+export type PalmAnalysis = PalmReadingData['analysis'] & {
   id?: string;
-  summary: string;
-  interpretation: string;
-  lines: {
-    lifeLine?: string;
-    headLine?: string;
-    heartLine?: string;
-    fateLine?: string;
-    sunLine?: string;
-    marriageLine?: string;
-  };
-  parameters: {
-    love: number;
-    career: number;
-    money: number;
-    health: number;
-    social: number;
-    growth: number;
-  };
-  advice: {
-    strength: string[];
-    opportunity: string[];
-    caution: string[];
-  };
-  fortune: {
-    overall: string;
-    luckyColor: string;
-    luckyNumber: string;
-    luckyItem: string;
-  };
   imageUrl?: string;
-}
+};
 
 export interface PalmReadingLimit {
   canAnalyze: boolean;
@@ -81,15 +54,15 @@ class PalmService {
 
     const token = await user.getIdToken();
     
-    const response = await fetch('/api/palm', {
+    const response = await fetch('/api/analyze-palm', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
-        imageBase64,
         imageUrl,
+        userId: user.uid,
       }),
     });
 
@@ -98,7 +71,8 @@ class PalmService {
       throw new Error(error.message || 'Failed to analyze palm');
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.analysis;
   }
 
   // 月1回の制限チェック
@@ -140,7 +114,6 @@ class PalmService {
   }
 
   // 過去の手相解析履歴を取得
-  // パラメータ名を limit から maxResults に変更
   async getPalmHistory(maxResults: number = 12): Promise<PalmAnalysis[]> {
     const user = auth.currentUser;
     if (!user) {
@@ -152,16 +125,19 @@ class PalmService {
       where('userId', '==', user.uid),
       where('readingType', '==', 'palm'),
       orderBy('createdAt', 'desc'),
-      limit(maxResults)  // 変数名の衝突を解消
+      limit(maxResults)
     );
 
     const snapshot = await getDocs(q);
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data().palmReading.analysis,
-      imageUrl: doc.data().palmReading.imageUrl,
-    }));
+    return snapshot.docs.map(docSnapshot => {
+      const data = docSnapshot.data();
+      return {
+        id: docSnapshot.id,
+        ...data.palmReading?.analysis,
+        imageUrl: data.palmReading?.imageUrl,
+      };
+    });
   }
 
   // 特定の手相解析結果を取得
@@ -222,10 +198,12 @@ class PalmService {
 
     // 平均パラメーター計算
     const avgParameters = history.reduce((acc, reading) => {
-      Object.keys(reading.parameters).forEach(key => {
-        const param = key as keyof typeof reading.parameters;
-        acc[param] = (acc[param] || 0) + reading.parameters[param];
-      });
+      if (reading.parameters) {
+        Object.keys(reading.parameters).forEach(key => {
+          const param = key as keyof typeof reading.parameters;
+          acc[param] = (acc[param] || 0) + reading.parameters[param];
+        });
+      }
       return acc;
     }, {} as Record<string, number>);
 

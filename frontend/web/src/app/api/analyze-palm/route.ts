@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { checkAndTrackUsage } from '@/lib/usage-tracker';
+import admin from 'firebase-admin';  // ← この行を追加
+
+// Firebase Admin初期化（追加）
+if (!admin.apps.length) {
+  const serviceAccount = {
+    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  };
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+  });
+}
+
+const db = admin.firestore();  // ← この行を追加
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -47,7 +63,7 @@ async function convertImageToSafeFormat(imageUrl: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { imageUrl, userId } = await request.json();
+    const { imageUrl, userId, readingId } = await request.json();  // ← readingId を追加
 
     if (!imageUrl) {
       return NextResponse.json(
@@ -56,7 +72,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ===== 使用制限チェック & 使用回数記録（追加） =====
+    // ===== 使用制限チェック & 使用回数記録 =====
     if (userId) {
       console.log('📊 手相占いの使用制限をチェック中...');
       
@@ -84,7 +100,6 @@ export async function POST(request: NextRequest) {
     } else {
       console.warn('⚠️ userIdが提供されていません。使用制限チェックをスキップします。');
     }
-    // ===== ここまで追加 =====
 
     console.log('🔍 手相解析開始:', imageUrl);
 
@@ -265,9 +280,26 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ 手相解析完了');
 
+    // ===== Firestoreに保存（ここから追加） =====
+    if (readingId) {
+      try {
+        await db.collection('readings').doc(readingId).update({
+          'palmReading.analysis': analysisResult,
+          parameters: analysisResult.parameters,
+          status: 'completed',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log('💾 Firestoreに保存完了:', readingId);
+      } catch (saveError) {
+        console.error('⚠️ Firestore保存エラー:', saveError);
+      }
+    }
+    // ===== ここまで追加 =====
+
     return NextResponse.json({
       success: true,
       analysis: analysisResult,
+      readingId: readingId,  // ← この行を追加
     });
 
   } catch (error) {

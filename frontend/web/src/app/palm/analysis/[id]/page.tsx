@@ -2,67 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { Loader2, Heart, Briefcase, DollarSign, Activity, Users, TrendingUp, Sparkles, Download, Star } from 'lucide-react';
-
-interface PalmAnalysis {
-  summary: string;
-  interpretation: string;
-  lines: {
-    lifeLine: string;
-    headLine: string;
-    heartLine: string;
-    fateLine: string;
-    sunLine?: string;
-    moneyLine?: string;
-    marriageLine?: string;
-    healthLine?: string;
-    otherLines?: string;
-  };
-  mounts?: {
-    jupiter: string;
-    saturn: string;
-    apollo: string;
-    mercury: string;
-    venus: string;
-    luna: string;
-  };
-  specialMarks?: Array<{
-    type: string;
-    location: string;
-    meaning: string;
-  }>;
-  handShape?: string;
-  parameters: {
-    love: number;
-    career: number;
-    money: number;
-    health: number;
-    social: number;
-    growth: number;
-  };
-  advice: {
-    strength: string[];
-    opportunity: string[];
-    caution: string[];
-  };
-  fortune: {
-    overall: string;
-    luckyColor: string;
-    luckyNumber: string;
-    luckyItem: string;
-    monthlyFortune?: string;
-  };
-}
+import { PalmReadingData } from '@/types/destiny.types';
 
 export default function PalmAnalysisPage() {
   const params = useParams();
   const router = useRouter();
   const [user, loading] = useAuthState(auth);
-  const [palmReading, setPalmReading] = useState<any>(null);
+  const [reading, setReading] = useState<PalmReadingData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [showLimitModal, setShowLimitModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (loading) return;
@@ -91,7 +45,7 @@ export default function PalmAnalysisPage() {
             return;
           }
           
-          setPalmReading(data.palmReading);
+          setReading(data.palmReading);
         } else {
           console.error('❌ ドキュメントが見つかりません');
           setError('解析結果が見つかりませんでした');
@@ -105,7 +59,64 @@ export default function PalmAnalysisPage() {
     fetchReading();
   }, [params.id, user, loading, router]);
 
-  if (loading || (!palmReading && !error)) {
+  const analyzePalm = async () => {
+    if (!imageUrl || !user) return;
+
+    setIsAnalyzing(true);
+    setError(null);
+
+    try {
+      // Firestoreに初期データを保存
+      const docRef = await addDoc(collection(db, 'readings'), {
+        userId: user.uid,
+        readingType: 'palm',
+        imageUrl,
+        createdAt: serverTimestamp(),
+      });
+
+      // APIリクエスト
+      const response = await fetch('/api/palm-reading', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageUrl,
+          userId: user.uid,
+          readingId: docRef.id,
+        }),
+      });
+
+      // 403エラーのハンドリング
+      if (response.status === 403) {
+        const errorData = await response.json();
+        setShowLimitModal(true);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('手相分析に失敗しました');
+      }
+
+      const data = await response.json();
+      setReading(data.result);
+
+      // Firestoreの結果を更新
+      await updateDoc(docRef, {
+        result: data.result,
+        updatedAt: serverTimestamp(),
+      });
+
+    } catch (err) {
+      console.error('手相分析エラー:', err);
+      setError(err instanceof Error ? err.message : '手相分析に失敗しました');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  if (loading || (!reading && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -132,7 +143,22 @@ export default function PalmAnalysisPage() {
     );
   }
 
-  const { analysis } = palmReading;
+  const analysis = reading?.analysis;
+  if (!analysis) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600 mb-4">解析データが見つかりません</p>
+          <button
+            onClick={() => router.push('/palm')}
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            手相占いに戻る
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   const parameterIcons: Record<string, any> = {
     love: Heart,
@@ -199,14 +225,16 @@ export default function PalmAnalysisPage() {
           <div className="grid md:grid-cols-2 gap-6">
             <div>
               <img
-                src={palmReading.imageUrl}
+                src={reading.imageUrl}
                 alt="手相画像"
                 className="w-full rounded-lg shadow-md"
               />
             </div>
             <div className="flex flex-col justify-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">総合評価</h2>
-              <p className="text-gray-700 leading-relaxed">{analysis.summary}</p>
+              <p className="text-gray-700 leading-relaxed">
+                {analysis.summary || analysis.overallInterpretation}
+              </p>
             </div>
           </div>
         </div>
@@ -246,14 +274,37 @@ export default function PalmAnalysisPage() {
         <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">主要な線の解説</h2>
           <div className="space-y-4">
-            {Object.entries(analysis.lines).map(([key, value]) => (
-              <div key={key} className="border-l-4 border-purple-500 pl-4">
-                <h3 className="font-bold text-gray-800 mb-2 text-lg">
-                  {lineLabels[key] || key}
-                </h3>
-                <p className="text-gray-700 leading-relaxed">{value as string}</p>
-              </div>
-            ))}
+            {analysis.mainLines && Object.entries(analysis.mainLines).map(([key, lineData]) => {
+              if (!lineData) return null;
+              
+              let displayText = '';
+              
+              if (typeof lineData === 'string') {
+                displayText = lineData;
+              } else if (lineData.interpretation) {
+                displayText = lineData.interpretation;
+              } else {
+                // 全てのプロパティを安全に取得
+                const data = lineData as any;
+                displayText = [
+                  data.clarity,
+                  data.curve,
+                  data.length,
+                  data.presence
+                ].filter(Boolean).join(' ');
+              }
+              
+              if (!displayText) return null;
+              
+              return (
+                <div key={key} className="border-l-4 border-purple-500 pl-4">
+                  <h3 className="font-bold text-gray-800 mb-2 text-lg">
+                    {lineLabels[key] || key}
+                  </h3>
+                  <p className="text-gray-700 leading-relaxed">{displayText}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -307,7 +358,7 @@ export default function PalmAnalysisPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-4">詳細な解釈</h2>
           <div className="prose prose-gray max-w-none">
             <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-              {analysis.interpretation}
+              {analysis.interpretation || analysis.overallInterpretation}
             </p>
           </div>
         </div>
@@ -321,74 +372,90 @@ export default function PalmAnalysisPage() {
         )}
 
         {/* アドバイス */}
-        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">アドバイス</h2>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div>
-              <h3 className="font-bold text-green-600 mb-3 text-lg">✨ あなたの強み</h3>
-              <ul className="space-y-2">
-                {analysis.advice.strength.map((item: string, index: number) => (
-                  <li key={index} className="text-gray-700 flex items-start gap-2">
-                    <span className="text-green-600 mt-1">•</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-blue-600 mb-3 text-lg">🌟 チャンス</h3>
-              <ul className="space-y-2">
-                {analysis.advice.opportunity.map((item: string, index: number) => (
-                  <li key={index} className="text-gray-700 flex items-start gap-2">
-                    <span className="text-blue-600 mt-1">•</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <h3 className="font-bold text-orange-600 mb-3 text-lg">⚠️ 注意点</h3>
-              <ul className="space-y-2">
-                {analysis.advice.caution.map((item: string, index: number) => (
-                  <li key={index} className="text-gray-700 flex items-start gap-2">
-                    <span className="text-orange-600 mt-1">•</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+        {analysis.advice && (
+          <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">アドバイス</h2>
+            {typeof analysis.advice === 'string' ? (
+              <p className="text-gray-700 leading-relaxed">{analysis.advice}</p>
+            ) : (
+              <div className="grid md:grid-cols-3 gap-6">
+                <div>
+                  <h3 className="font-bold text-green-600 mb-3 text-lg">✨ あなたの強み</h3>
+                  <ul className="space-y-2">
+                    {analysis.advice?.strength?.map((item: string, index: number) => (
+                      <li key={index} className="text-gray-700 flex items-start gap-2">
+                        <span className="text-green-600 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="font-bold text-blue-600 mb-3 text-lg">🌟 チャンス</h3>
+                  <ul className="space-y-2">
+                    {analysis.advice?.opportunity?.map((item: string, index: number) => (
+                      <li key={index} className="text-gray-700 flex items-start gap-2">
+                        <span className="text-blue-600 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3 className="font-bold text-orange-600 mb-3 text-lg">⚠️ 注意点</h3>
+                  <ul className="space-y-2">
+                    {analysis.advice?.caution?.map((item: string, index: number) => (
+                      <li key={index} className="text-gray-700 flex items-start gap-2">
+                        <span className="text-orange-600 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* ラッキーアイテム */}
-        <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">運勢アップのヒント</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーカラー</p>
-              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyColor}</p>
+        {analysis.fortune && (
+          <div className="bg-white rounded-xl shadow-xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">運勢アップのヒント</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {analysis.fortune.luckyColor && (
+                <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーカラー</p>
+                  <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyColor}</p>
+                </div>
+              )}
+              {analysis.fortune.luckyNumber && (
+                <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーナンバー</p>
+                  <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyNumber}</p>
+                </div>
+              )}
+              {analysis.fortune.luckyItem && (
+                <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーアイテム</p>
+                  <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyItem}</p>
+                </div>
+              )}
+              {analysis.fortune.overall && (
+                <div className="text-center p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-2 font-medium">総合運</p>
+                  <p className="font-bold text-gray-900 text-sm leading-tight">{analysis.fortune.overall}</p>
+                </div>
+              )}
             </div>
-            <div className="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーナンバー</p>
-              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyNumber}</p>
-            </div>
-            <div className="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2 font-medium">ラッキーアイテム</p>
-              <p className="font-bold text-gray-900 text-lg">{analysis.fortune.luckyItem}</p>
-            </div>
-            <div className="text-center p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg">
-              <p className="text-sm text-gray-600 mb-2 font-medium">総合運</p>
-              <p className="font-bold text-gray-900 text-sm leading-tight">{analysis.fortune.overall}</p>
-            </div>
+            
+            {analysis.fortune.monthlyFortune && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg">
+                <h3 className="font-bold text-purple-900 mb-2">今月の運勢</h3>
+                <p className="text-gray-800">{analysis.fortune.monthlyFortune}</p>
+              </div>
+            )}
           </div>
-          
-          {analysis.fortune.monthlyFortune && (
-            <div className="mt-4 p-4 bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg">
-              <h3 className="font-bold text-purple-900 mb-2">今月の運勢</h3>
-              <p className="text-gray-800">{analysis.fortune.monthlyFortune}</p>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* アクションボタン */}
         <div className="flex gap-4 justify-center">

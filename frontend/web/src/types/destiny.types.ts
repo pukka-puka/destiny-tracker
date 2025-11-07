@@ -41,30 +41,65 @@ export interface TarotReadingData {
 export interface PalmReadingData {
   imageUrl: string;
   analysis: {
-    summary: string;
-    interpretation: string;
-    lines: {
-      lifeLine?: string;
-      headLine?: string;
-      heartLine?: string;
-      fateLine?: string;
+    summary?: string;
+    interpretation?: string;
+    overallInterpretation?: string;
+    mainLines?: {
+      lifeLine?: {
+        clarity?: string;
+        curve?: string;
+        interpretation?: string;
+        length?: string;
+      };
+      headLine?: {
+        clarity?: string;
+        curve?: string;
+        interpretation?: string;
+        length?: string;
+      };
+      heartLine?: {
+        clarity?: string;
+        curve?: string;
+        interpretation?: string;
+        length?: string;
+      };
+      fateLine?: {
+        clarity?: string;
+        interpretation?: string;
+        presence?: string;
+      };
       sunLine?: string;
       marriageLine?: string;
     };
-    parameters: DestinyParameters;
-    advice: {
-      strength: string[];
-      opportunity: string[];
-      caution: string[];
+    mounts?: {
+      jupiter?: string;
+      saturn?: string;
+      apollo?: string;
+      mercury?: string;
+      venus?: string;
+      luna?: string;
     };
-    fortune: {
-      overall: string;
-      luckyColor: string;
-      luckyNumber: string;
-      luckyItem: string;
+    specialMarks?: Array<{
+      type: string;
+      location: string;
+      meaning: string;
+    }>;
+    handShape?: string;
+    parameters: DestinyParameters;
+    advice?: {
+      strength?: string[];
+      opportunity?: string[];
+      caution?: string[];
+    } | string;
+    fortune?: {
+      overall?: string;
+      luckyColor?: string;
+      luckyNumber?: string;
+      luckyItem?: string;
+      monthlyFortune?: string;
     };
   };
-  analyzedAt: Date;
+  analyzedAt?: Date;
 }
 
 // 拡張された占い記録
