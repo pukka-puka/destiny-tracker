@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDropzone } from 'react-dropzone';
 import { Camera, Upload, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { auth, db, storage } from '@/lib/firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +21,27 @@ export default function PalmPage() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
   const [showLimitModal, setShowLimitModal] = useState(false);
+
+  // 匿名認証の初期化
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (!auth.currentUser) {
+          console.log('🔐 匿名認証を開始...');
+          const credential = await signInAnonymously(auth);
+          console.log('✅ 匿名認証完了:', credential.user.uid);
+        } else {
+          const user = auth.currentUser;
+          console.log('✅ 既にログイン済み:', user.uid);
+        }
+      } catch (error) {
+        console.error('❌ 認証エラー:', error);
+        setError('認証に失敗しました。ページをリロードしてください。');
+      }
+    };
+    
+    initAuth();
+  }, []);
 
   const convertToJPEG = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
@@ -131,7 +153,7 @@ export default function PalmPage() {
         body: JSON.stringify({
           imageUrl,
           userId: user.uid,
-          readingId: docRef.id, // ← この行を追加
+          readingId: docRef.id,
         }),
       });
 
