@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import * as admin from 'firebase-admin';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-11-20.acacia',
@@ -100,15 +101,26 @@ async function handleSubscriptionCancelled(subscription: Stripe.Subscription) {
 
   console.log('Subscription cancelled for user:', userId);
 
-  // ユーザーを無料プランに戻す
-  await adminDb.collection('users').doc(userId).update({
+  const updateData: any = {
     subscription: 'free',
     stripeSubscriptionId: null,
-    stripeCustomerId: subscription.customer,
+    stripeCustomerId: subscription.customer as string,
     subscriptionStatus: 'cancelled',
-    subscriptionEndDate: new Date(subscription.current_period_end * 1000),
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+
+  // current_period_endが有効な数値の場合のみ追加
+  if (subscription.current_period_end && typeof subscription.current_period_end === 'number') {
+    try {
+      updateData.subscriptionEndDate = admin.firestore.Timestamp.fromDate(
+        new Date(subscription.current_period_end * 1000)
+      );
+    } catch (error) {
+      console.error('❌ Error creating end date timestamp:', error);
+    }
+  }
+
+  await adminDb.collection('users').doc(userId).update(updateData);
 }
 
 async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
@@ -120,15 +132,27 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
     const userId = subscription.metadata?.userId;
     
     if (userId) {
-      await adminDb.collection('payments').add({
+      const paymentData: any = {
         userId,
         invoiceId: invoice.id,
         amount: invoice.amount_paid / 100, // セントから円に変換
         currency: invoice.currency,
         status: 'succeeded',
-        paidAt: new Date(invoice.status_transitions.paid_at! * 1000),
         createdAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      // paid_atが有効な数値の場合のみ追加
+      if (invoice.status_transitions.paid_at && typeof invoice.status_transitions.paid_at === 'number') {
+        try {
+          paymentData.paidAt = admin.firestore.Timestamp.fromDate(
+            new Date(invoice.status_transitions.paid_at * 1000)
+          );
+        } catch (error) {
+          console.error('❌ Error creating paid_at timestamp:', error);
+        }
+      }
+
+      await adminDb.collection('payments').add(paymentData);
     }
   }
 }
@@ -172,15 +196,37 @@ async function updateUserSubscription(
     tier = 'basic';
   }
 
-  await adminDb.collection('users').doc(userId).update({
+  // デバッグ用ログを追加
+  console.log('=== DEBUG: Subscription Data ===');
+  console.log('current_period_end:', subscription.current_period_end);
+  console.log('current_period_end type:', typeof subscription.current_period_end);
+  console.log('current_period_end * 1000:', subscription.current_period_end * 1000);
+
+  // subscriptionCurrentPeriodEndをオプショナルにする
+  const updateData: any = {
     subscription: tier,
-    stripeCustomerId: subscription.customer,
+    stripeCustomerId: subscription.customer as string,
     stripeSubscriptionId: subscription.id,
     subscriptionStatus: subscription.status,
-    subscriptionCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
     subscriptionCancelAtPeriodEnd: subscription.cancel_at_period_end,
     updatedAt: FieldValue.serverTimestamp(),
-  });
+  };
+
+  // current_period_endが有効な数値の場合のみ追加
+  if (subscription.current_period_end && typeof subscription.current_period_end === 'number') {
+    try {
+      updateData.subscriptionCurrentPeriodEnd = admin.firestore.Timestamp.fromDate(
+        new Date(subscription.current_period_end * 1000)
+      );
+      console.log('✅ Timestamp created successfully');
+    } catch (error) {
+      console.error('❌ Error creating timestamp:', error);
+    }
+  } else {
+    console.warn('⚠️ current_period_end is not a valid number, skipping');
+  }
+
+  await adminDb.collection('users').doc(userId).update(updateData);
 
   console.log(`User ${userId} subscription updated to ${tier}`);
 }
