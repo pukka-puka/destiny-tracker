@@ -13,8 +13,10 @@ export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null);
 
   const handleSubscribe = async (priceId: string | undefined, planId: string) => {
+    // 未ログインの場合はログインページへリダイレクト
     if (!user) {
-      router.push('/login');
+      alert('プランを購入するにはログインが必要です');
+      router.push('/'); // ホームに戻ってログインを促す
       return;
     }
 
@@ -85,6 +87,15 @@ export default function PricingPage() {
         <p className="text-xl text-gray-400 max-w-2xl mx-auto">
           無料プランから始めて、いつでもアップグレード可能です
         </p>
+        
+        {/* 未ログイン時の注意メッセージ */}
+        {!user && (
+          <div className="mt-8 max-w-md mx-auto bg-blue-500/10 border border-blue-500/30 rounded-2xl p-4">
+            <p className="text-blue-300 text-sm">
+              💡 有料プランをご利用いただくには、まずログインが必要です
+            </p>
+          </div>
+        )}
       </div>
 
       {/* プランカード */}
@@ -177,8 +188,8 @@ export default function PricingPage() {
                   : isCurrentPlan(plan.id)
                   ? '現在のプラン'
                   : plan.price === 0
-                  ? '無料で始める'
-                  : 'プランを選択'}
+                  ? user ? '無料で始める' : 'ログインして始める'
+                  : user ? 'プランを選択' : 'ログインして選択'}
               </button>
             </div>
           ))}
@@ -326,6 +337,7 @@ export default function PricingPage() {
             <li>• 無料プランの各機能の利用回数は「累計」です（リセットされません）</li>
             <li>• Basic/Premiumプランの各機能の利用回数は「月間」です（毎月1日にリセット）</li>
             <li>• すべてのプランで履歴は無期限で保存されます</li>
+            <li>• 有料プランをご利用いただくには、ログインが必要です</li>
             <li>• いつでもプラン変更・キャンセルが可能です</li>
             <li>• キャンセルは次回更新日まで有効です</li>
           </ul>
