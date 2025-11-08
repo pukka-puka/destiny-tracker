@@ -2,7 +2,7 @@
 // 使用回数追跡とプラン制限チェックのヘルパー関数
 
 import { adminDb } from './firebase-admin';
-import { PLANS } from './plans';
+import { PLANS, canUseFeature } from './plans';
 
 /**
  * 現在の月を取得 (YYYY-MM形式)
@@ -30,9 +30,11 @@ export type UsageField =
 export interface UsageLimitResult {
   allowed: boolean;
   currentUsage: number;
+  lifetimeUsage: number;
   limit: number;
   remaining: number;
   resetDate?: Date;
+  period: 'month' | 'lifetime';
 }
 
 /**
@@ -60,67 +62,65 @@ export async function checkUsageLimit(
     const currentMonth = getCurrentMonth();
     const userMonth = userData.currentMonth || '';
 
-    // 月が変わっていたら使用回数は0としてカウント（有料プランのみ）
-    let currentUsage = 0;
+    // 無料プランは累計、有料プランは月間で判断
+    let currentUsage = userData[usageField] || 0;
+    const lifetimeUsage = userData[usageField] || 0; // 累計使用回数
+
+    // 有料プランで月が変わっている場合のみリセット扱い
     if (subscription !== 'free' && userMonth !== currentMonth) {
-      // 有料プランで月が変わっている場合は0からスタート
-      currentUsage = 0;
-    } else {
-      // 無料プランまたは同じ月の場合は既存の値を使用
-      currentUsage = userData[usageField] || 0;
+      currentUsage = 0; // 新しい月なので0からスタート
     }
 
     // プランの制限を取得
     const plan = PLANS[subscription as keyof typeof PLANS];
     
     // 使用回数フィールドに対応するプラン機能を取得
-    let featureLimit = -1; // -1は無制限
+    let featureKey: keyof typeof plan.features;
     
     switch (usageField) {
       case 'readingCount':
-        featureLimit = plan.features.tarot.limit;
+        featureKey = 'tarot';
         break;
       case 'palmReadingCount':
-        featureLimit = plan.features.palm.limit;
+        featureKey = 'palm';
         break;
       case 'ichingCount':
-        featureLimit = plan.features.iching.limit;
+        featureKey = 'iching';
         break;
       case 'chatConsultCount':
-        featureLimit = plan.features.aiChat.limit;
+        featureKey = 'aiChat';
         break;
       case 'compatibilityCount':
-        featureLimit = plan.features.compatibility.limit;
+        featureKey = 'compatibility';
         break;
     }
 
-    // 無制限の場合
-    if (featureLimit === -1) {
-      return {
-        allowed: true,
-        currentUsage,
-        limit: -1,
-        remaining: -1,
-      };
-    }
+    // canUseFeature関数を使用してチェック
+    const usageCheck = canUseFeature(
+      subscription as any,
+      featureKey,
+      currentUsage,
+      lifetimeUsage
+    );
 
-    // 制限に達しているかチェック
-    const allowed = currentUsage < featureLimit;
-    const remaining = Math.max(0, featureLimit - currentUsage);
-
-    // 次のリセット日（来月1日）- 無料プランの場合はnull
+    // 次のリセット日（来月1日）- 無料プランまたはlifetime制限の場合はnull
     let resetDate;
-    if (subscription !== 'free') {
+    const featureConfig = plan.features[featureKey] as any;
+    const period = featureConfig.period || 'month';
+    
+    if (subscription !== 'free' && period === 'month') {
       const now = new Date();
       resetDate = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     }
 
     return {
-      allowed,
+      allowed: usageCheck.allowed,
       currentUsage,
-      limit: featureLimit,
-      remaining,
+      lifetimeUsage,
+      limit: usageCheck.limit,
+      remaining: usageCheck.remaining,
       resetDate,
+      period,
     };
   } catch (error) {
     console.error('Error checking usage limit:', error);
@@ -130,7 +130,7 @@ export async function checkUsageLimit(
 
 /**
  * Admin SDKを使った使用回数記録（増加）
- * 有料プランの場合のみ月が変わったら自動的にリセット
+ * 無料プランは累計のみ、有料プランは月次リセット対応
  * 
  * @param userId - ユーザーID
  * @param usageField - 増加させる使用回数フィールド
@@ -152,8 +152,20 @@ export async function trackUsage(
     const currentMonth = getCurrentMonth();
     const userMonth = userData.currentMonth || '';
 
+    // 無料プランは累計カウント（リセットなし）
+    if (subscription === 'free') {
+      const currentValue = userData[usageField] || 0;
+      await userRef.update({
+        [usageField]: currentValue + 1,
+        lastReadingAt: new Date(),
+        updatedAt: new Date(),
+      });
+      console.log(`✅ 無料プラン（累計）: ${usageField} を +1 しました (${currentValue} → ${currentValue + 1})`);
+      return;
+    }
+
     // 有料プランの場合のみ月次リセット
-    if (subscription !== 'free' && userMonth !== currentMonth) {
+    if (userMonth !== currentMonth) {
       console.log(`📅 月が変わりました: ${userMonth} → ${currentMonth}`);
       console.log(`🔄 ${subscription}プランの使用回数をリセットします`);
 
@@ -171,7 +183,7 @@ export async function trackUsage(
 
       console.log('✅ リセット完了 & 使用回数を記録');
     } else {
-      // 通常の増加（無料プランは永遠にカウントアップ）
+      // 通常の増加（有料プランの月間カウント）
       const currentValue = userData[usageField] || 0;
       await userRef.update({
         [usageField]: currentValue + 1,
@@ -179,12 +191,7 @@ export async function trackUsage(
         updatedAt: new Date(),
       });
 
-      console.log(`✅ ${usageField} を +1 しました (${currentValue} → ${currentValue + 1})`);
-      
-      // 無料プランの場合は警告ログ
-      if (subscription === 'free') {
-        console.log(`⚠️ 無料プラン: 使用回数は永続的にカウント（リセットなし）`);
-      }
+      console.log(`✅ ${subscription}プラン（月間）: ${usageField} を +1 しました (${currentValue} → ${currentValue + 1})`);
     }
   } catch (error) {
     console.error('Error tracking usage:', error);
@@ -223,13 +230,13 @@ export function getUsageLimitMessage(
   }
 
   if (!result.allowed) {
-    if (subscription === 'free') {
-      // 無料プランの場合はリセット日なし
-      return `今月の${featureName}の利用回数上限（${result.limit}回）に達しました。\n\n` +
-             `無料プランの使用回数は月次リセットされません。\n\n` +
+    if (result.period === 'lifetime') {
+      // lifetime制限の場合（主に無料プラン）
+      return `${featureName}の利用回数上限（累計${result.limit}回）に達しました。\n\n` +
+             `無料プランの使用回数はリセットされません。\n\n` +
              `続けてご利用したい場合は、プランをアップグレードしてください!`;
     } else {
-      // 有料プランの場合はリセット日を表示
+      // 月間制限の場合（有料プラン）
       const resetDateStr = result.resetDate 
         ? result.resetDate.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
         : '来月1日';
@@ -240,7 +247,8 @@ export function getUsageLimitMessage(
     }
   }
 
-  return `${featureName}を利用できます（残り${result.remaining}回）`;
+  const periodText = result.period === 'lifetime' ? '累計' : '今月';
+  return `${featureName}を利用できます（${periodText}残り${result.remaining}回）`;
 }
 
 /**

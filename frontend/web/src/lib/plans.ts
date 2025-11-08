@@ -2,11 +2,11 @@
 export type SubscriptionTier = 'free' | 'basic' | 'premium';
 
 export interface PlanFeatures {
-  tarot: { limit: number; period?: 'month' | 'day' };
-  palm: { limit: number; period?: 'month' | 'day' };
-  iching: { limit: number; period?: 'month' | 'day' };
-  aiChat: { limit: number; period?: 'month' | 'day' };
-  compatibility: { limit: number; period?: 'month' | 'day' };
+  tarot: { limit: number; period?: 'month' | 'day' | 'lifetime' };
+  palm: { limit: number; period?: 'month' | 'day' | 'lifetime' };
+  iching: { limit: number; period?: 'month' | 'day' | 'lifetime' };
+  aiChat: { limit: number; period?: 'month' | 'day' | 'lifetime' };
+  compatibility: { limit: number; period?: 'month' | 'day' | 'lifetime' };
   history: { days: number };
   ads: boolean;
   priority: boolean;
@@ -35,12 +35,12 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
     price: 0,
     description: 'まずは気軽に試してみたい方におすすめ',
     features: {
-      tarot: { limit: 3, period: 'month' },
-      palm: { limit: 1, period: 'month' },
-      iching: { limit: 2, period: 'month' },
-      aiChat: { limit: 0, period: 'month' },
-      compatibility: { limit: 1, period: 'month' },
-      history: { days: -1 }, // 無期限
+      tarot: { limit: 3, period: 'lifetime' },
+      palm: { limit: 1, period: 'lifetime' },
+      iching: { limit: 2, period: 'lifetime' },
+      aiChat: { limit: 0, period: 'lifetime' },
+      compatibility: { limit: 1, period: 'lifetime' },
+      history: { days: -1 },
       ads: true,
       priority: false,
     },
@@ -65,7 +65,7 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
       iching: { limit: 40, period: 'month' },
       aiChat: { limit: 100, period: 'month' },
       compatibility: { limit: 10, period: 'month' },
-      history: { days: -1 }, // 無期限
+      history: { days: -1 },
       ads: false,
       priority: false,
       pdfExport: true,
@@ -95,7 +95,7 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
       iching: { limit: -1 },
       aiChat: { limit: -1 },
       compatibility: { limit: -1 },
-      history: { days: -1 }, // 無期限
+      history: { days: -1 },
       ads: false,
       priority: true,
       pdfExport: true,
@@ -116,28 +116,35 @@ export const PLANS: Record<SubscriptionTier, Plan> = {
   },
 };
 
-// 使用制限チェック関数
+// 使用制限チェック関数（lifetime対応版）
 export function canUseFeature(
   subscription: SubscriptionTier,
   feature: keyof PlanFeatures,
-  usageThisMonth: number
+  usageThisMonth: number,
+  usageLifetime?: number
 ): { allowed: boolean; remaining: number; limit: number } {
   const plan = PLANS[subscription];
   const featureLimit = plan.features[feature] as any;
 
-  // 数値でないもの（広告設定など）は常にtrue
   if (typeof featureLimit !== 'object' || !('limit' in featureLimit)) {
     return { allowed: true, remaining: -1, limit: -1 };
   }
 
   const limit = featureLimit.limit;
+  const period = featureLimit.period;
 
-  // 無制限の場合
   if (limit === -1) {
     return { allowed: true, remaining: -1, limit: -1 };
   }
 
-  // 制限がある場合
+  // lifetime（累計）の場合
+  if (period === 'lifetime' && usageLifetime !== undefined) {
+    const allowed = usageLifetime < limit;
+    const remaining = Math.max(0, limit - usageLifetime);
+    return { allowed, remaining, limit };
+  }
+
+  // month（月間）の場合
   const allowed = usageThisMonth < limit;
   const remaining = Math.max(0, limit - usageThisMonth);
 
