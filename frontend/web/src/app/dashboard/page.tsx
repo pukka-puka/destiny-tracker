@@ -288,16 +288,36 @@ export default function DashboardPage() {
   };
 
   // グラフ用データの作成
-  const chartData = readingHistory.map((reading, index) => {
-    const date = reading.createdAt?.seconds 
-      ? new Date(reading.createdAt.seconds * 1000)
-      : new Date(reading.createdAt);
-    
-    return {
-      date: date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
-      ...reading.parameters
-    };
-  }).reverse();
+  const chartData = readingHistory
+    .filter((reading): reading is Reading & { parameters: NonNullable<Reading['parameters']> } => 
+      reading.parameters !== null && reading.parameters !== undefined
+    )
+    .sort((a, b) => {
+      const timeA = a.createdAt?.seconds || 0;
+      const timeB = b.createdAt?.seconds || 0;
+      return timeA - timeB;
+    })
+    .map((reading) => {
+      // 🔧 修正: 日付 + 時刻でユニークなキーを作成
+      const date = reading.createdAt?.seconds 
+        ? new Date(reading.createdAt.seconds * 1000).toLocaleString('ja-JP', { 
+            month: '2-digit', 
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : '未設定';
+
+      return {
+        date,
+        love: reading.parameters.love,
+        career: reading.parameters.career,
+        money: reading.parameters.money,
+        health: reading.parameters.health,
+        social: reading.parameters.social,
+        growth: reading.parameters.growth
+      };
+    });
 
   // 新機能カード
   const newFeatures = [
@@ -556,7 +576,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 運勢の推移グラフ */}
-        {readingHistory.length > 1 && (
+        {chartData.length > 1 && (
           <div className="bg-white rounded-2xl p-8 shadow-lg mb-8">
             <div className="flex items-center gap-2 mb-6">
               <LineChartIcon className="w-6 h-6 text-purple-600" />
