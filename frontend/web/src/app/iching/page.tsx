@@ -6,8 +6,10 @@ import { useRouter } from 'next/navigation';
 import { Sparkles, BookOpen, ArrowRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import UsageLimitModal from '@/components/UsageLimitModal';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-// 簡易的な64卦データ
+// 64卦の基本データ（簡易版）
 interface Hexagram {
   number: number;
   name: string;
@@ -21,7 +23,7 @@ interface Hexagram {
   };
 }
 
-const sampleHexagrams: Hexagram[] = [
+const hexagramsData: Hexagram[] = [
   {
     number: 1,
     name: "乾為天",
@@ -45,21 +47,19 @@ const sampleHexagrams: Hexagram[] = [
 ];
 
 function getHexagramByBinary(binary: string): Hexagram {
-  const index = parseInt(binary.substring(0, 2), 2) % sampleHexagrams.length;
-  return sampleHexagrams[index];
+  const index = parseInt(binary.substring(0, 2), 2) % hexagramsData.length;
+  return hexagramsData[index];
 }
 
-// 筮竹で一爻を決定（49本の筮竹を使った伝統的な方法を簡略化）
+// 筮竹で一爻を決定
 function divineWithSticks(): { value: number; changing: boolean } {
-  // ランダムで陽爻(1)か陰爻(0)を決定
-  // 老陽(9)、少陽(7)、老陰(6)、少陰(8)を模擬
   const result = Math.floor(Math.random() * 4);
-  const values = [6, 7, 8, 9]; // 老陰、少陽、少陰、老陽
+  const values = [6, 7, 8, 9];
   const chosen = values[result];
   
   return {
-    value: chosen === 7 || chosen === 9 ? 1 : 0, // 陽か陰か
-    changing: chosen === 6 || chosen === 9 // 変爻かどうか
+    value: chosen === 7 || chosen === 9 ? 1 : 0,
+    changing: chosen === 6 || chosen === 9
   };
 }
 
@@ -83,7 +83,6 @@ export default function IChingPage() {
       return;
     }
 
-    // ユーザーIDの確認を追加
     if (!user?.uid) {
       alert('ログインが必要です');
       return;
@@ -98,119 +97,87 @@ export default function IChingPage() {
   const divineWithSticksAnimation = async () => {
     if (divineCount >= 6 || isAnimating) return;
 
-    console.log('筮竹操作開始:', divineCount + 1);
     setIsAnimating(true);
     
     try {
-      // 筮竹を操作するアニメーション（2秒）
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const result = divineWithSticks();
       const newLines = [...lines, result.value];
       const newChangingLines = result.changing ? [...changingLines, divineCount] : changingLines;
 
-      console.log('新しい爻:', result.value, '変爻:', result.changing);
-
       setLines(newLines);
       setChangingLines(newChangingLines);
-      
-      const newCount = divineCount + 1;
-      setDivineCount(newCount);
-      
-      setIsAnimating(false);
+      setDivineCount(divineCount + 1);
 
-      // 6回完了したら結果を表示
-      if (newCount === 6) {
-        console.log('6回完了、結果を解析');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        analyzeResult(newLines, newChangingLines);
+      if (divineCount + 1 === 6) {
+        const binary = newLines.join('');
+        const hex = getHexagramByBinary(binary);
+        setHexagram(hex);
+        
+        setTimeout(() => {
+          analyzeWithAI(hex, newChangingLines);
+        }, 1000);
       }
-    } catch (error) {
-      console.error('筮竹操作エラー:', error);
+    } finally {
       setIsAnimating(false);
     }
   };
 
-  const analyzeResult = async (finalLines: number[], finalChangingLines: number[]) => {
-    const binary = [...finalLines].reverse().join('');
-    const mainHexagram = getHexagramByBinary(binary);
-    setHexagram(mainHexagram);
-
+  const analyzeWithAI = async (hex: Hexagram, changingLineIndexes: number[]) => {
     setIsAnalyzing(true);
+
     try {
       const response = await fetch('/api/iching/interpret', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
-          hexagram: mainHexagram,
-          changingLines: finalChangingLines,
-          futureHexagram: null,
-          userId: user?.uid  // ← この行を追加
+          hexagram: hex,
+          changingLines: changingLineIndexes,
+          userId: user?.uid
         })
       });
 
-      // 403エラーのハンドリングを追加
-      if (response.status === 403) {
-        const errorData = await response.json();
-        setShowLimitModal(true);
-        setIsAnalyzing(false);
-        return;
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          setShowLimitModal(true);
+          return;
+        }
+        throw new Error(data.error || '解釈の取得に失敗しました');
       }
 
-      const data = await response.json();
-      const aiInterpretation = data.interpretation || mainHexagram.meaning.general;
-      setInterpretation(aiInterpretation);
+      setInterpretation(data.interpretation);
 
       // Firestoreに保存
-      if (typeof window !== 'undefined') {
-        const { collection, addDoc, Timestamp } = await import('firebase/firestore');
-        const { db } = await import('@/lib/firebase');
-        const { auth } = await import('@/lib/firebase');
-        
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          await addDoc(collection(db, 'readings'), {
-            userId: currentUser.uid,
-            readingType: 'iching',
-            question,
-            hexagram: {
-              number: mainHexagram.number,
-              name: mainHexagram.name,
-              chinese: mainHexagram.chinese,
-              binary: mainHexagram.binary,
-              keywords: mainHexagram.keywords
-            },
-            lines: finalLines,
-            changingLines: finalChangingLines,
-            interpretation: aiInterpretation,
-            parameters: {
-              love: 70,
-              career: 70,
-              money: 70,
-              health: 70,
-              social: 70,
-              growth: 70
-            },
-            createdAt: Timestamp.now()
-          });
-          console.log('易占い結果を保存しました');
-        }
-      }
+      const readingId = `iching_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      await setDoc(doc(db, 'readings', readingId), {
+        userId: user?.uid,
+        readingType: 'iching',
+        question,
+        hexagram: hex,
+        lines,
+        changingLines: changingLineIndexes,
+        interpretation: data.interpretation,
+        createdAt: new Date()
+      });
+
+      // 結果ページへ遷移
+      router.push(`/iching/result/${readingId}`);
+
     } catch (error) {
-      console.error('解釈生成エラー:', error);
-      setInterpretation(mainHexagram.meaning.general);
+      console.error('AI解釈エラー:', error);
+      alert('解釈の生成に失敗しました');
     } finally {
       setIsAnalyzing(false);
     }
-
-    setStep('result');
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-900 via-yellow-800 to-orange-900 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* ヘッダー */}
         <div className="text-center mb-12">
           <button onClick={() => router.push('/dashboard')} className="text-amber-100/80 hover:text-white mb-4">
             ← ダッシュボードに戻る
@@ -222,7 +189,6 @@ export default function IChingPage() {
           <p className="text-amber-100/80 text-lg">3000年の歴史を持つ東洋最古の占い</p>
         </div>
 
-        {/* イントロ画面 */}
         {step === 'intro' && (
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8">
             <h2 className="text-2xl font-bold text-white mb-6">質問を入力してください</h2>
@@ -263,7 +229,6 @@ export default function IChingPage() {
           </div>
         )}
 
-        {/* 筮竹操作画面 */}
         {step === 'divining' && (
           <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8 text-center">
             <h2 className="text-2xl font-bold text-white mb-4">
@@ -273,10 +238,8 @@ export default function IChingPage() {
               49本の筮竹を分け、数を数えて一爻を得ます
             </p>
 
-            {/* 筮竹のビジュアル */}
             <div className="mb-8 relative">
               <div className={`inline-flex gap-1 ${isAnimating ? 'animate-pulse' : ''}`}>
-                {/* 筮竹を表現 */}
                 {[...Array(isAnimating ? 49 : 6)].map((_, i) => (
                   <div
                     key={i}
@@ -287,9 +250,6 @@ export default function IChingPage() {
                           ? 'h-20 opacity-50' 
                           : 'h-24'
                     }`}
-                    style={{
-                      animation: isAnimating ? `stick-${i % 3} 1s ease-in-out infinite` : 'none'
-                    }}
                   />
                 ))}
               </div>
@@ -300,14 +260,13 @@ export default function IChingPage() {
               )}
             </div>
 
-            {/* 卦の表示 */}
             <div className="mb-8 flex flex-col-reverse gap-3 max-w-md mx-auto">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className={`h-12 rounded-lg flex items-center justify-center transition-all ${
                   i < lines.length ? lines[i] === 1 ? 'bg-white/90' : 'bg-white/30' : 'bg-white/10'
-                } ${changingLines.includes(i) ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}>
+                } ${changingLines.includes(i) ? 'ring-2 ring-amber-400' : ''}`}>
                   {i < lines.length && (
-                    <span className="text-amber-900 font-bold text-lg">
+                    <span className="text-amber-900 font-bold text-xl">
                       {lines[i] === 1 ? '━━━━━' : '━━ ━━'}
                     </span>
                   )}
@@ -315,145 +274,41 @@ export default function IChingPage() {
               ))}
             </div>
 
-            <button
-              onClick={() => {
-                console.log('ボタンクリック！現在:', { divineCount, isAnimating, step });
-                divineWithSticksAnimation();
-              }}
-              disabled={isAnimating || divineCount >= 6}
-              className={`px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-xl transition-all ${
-                isAnimating || divineCount >= 6
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:from-amber-600 hover:to-orange-600 cursor-pointer'
-              }`}
-            >
-              {isAnimating ? (
-                <span className="flex items-center gap-2 justify-center">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  筮竹を操作中...
-                </span>
-              ) : divineCount >= 6 ? (
-                <span className="flex items-center gap-2 justify-center">
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  卦を解析中...
-                </span>
-              ) : (
-                `筮竹を操作する (${divineCount + 1}回目)`
-              )}
-            </button>
-            
-            <div className="mt-4 text-amber-100/60 text-xs">
-              ※ 陽爻（━━━━━）と陰爻（━━ ━━）を6回得て卦を完成させます
-            </div>
+            {divineCount < 6 && !isAnalyzing && (
+              <button
+                onClick={divineWithSticksAnimation}
+                disabled={isAnimating}
+                className="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-xl hover:from-amber-600 hover:to-orange-600 disabled:opacity-50"
+              >
+                {isAnimating ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    筮竹を数えています...
+                  </span>
+                ) : (
+                  '筮竹を操作する'
+                )}
+              </button>
+            )}
+
+            {isAnalyzing && (
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
+                <p className="text-amber-100/80">AIが易経の古典を参照し、解釈を生成しています...</p>
+              </div>
+            )}
           </div>
         )}
 
-        {/* 結果画面 */}
-        {step === 'result' && hexagram && (
-          <div className="space-y-6">
-            <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8">
-              <h2 className="text-3xl font-bold text-white mb-6">
-                本卦：{hexagram.chinese} {hexagram.name}
-              </h2>
-
-              {/* 卦の図 */}
-              <div className="flex flex-col-reverse gap-2 max-w-md mx-auto mb-6">
-                {hexagram.binary.split('').map((line, i) => (
-                  <div key={i} className={`h-12 rounded-lg flex items-center justify-center ${
-                    line === '1' ? 'bg-white/90' : 'bg-white/30'
-                  } ${changingLines.includes(5 - i) ? 'ring-2 ring-amber-400' : ''}`}>
-                    <span className="text-amber-900 font-bold text-xl">
-                      {line === '1' ? '━━━━━' : '━━ ━━'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-amber-200 font-bold mb-2">卦辞</h3>
-                  <p className="text-white/90">{hexagram.judgment}</p>
-                </div>
-                <div>
-                  <h3 className="text-amber-200 font-bold mb-2">象伝</h3>
-                  <p className="text-white/90">{hexagram.image}</p>
-                </div>
-                <div>
-                  <h3 className="text-amber-200 font-bold mb-2">キーワード</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {hexagram.keywords.map((kw, i) => (
-                      <span key={i} className="px-3 py-1 bg-amber-500/20 text-amber-200 rounded-full text-sm">
-                        {kw}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* AI解釈 */}
-            <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-8">
-              <h3 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-                <Sparkles className="w-6 h-6 text-amber-400" />
-                AI解釈
-              </h3>
-              {isAnalyzing ? (
-                <div className="text-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto mb-4" />
-                  <p className="text-white/70">古典の知恵を解釈しています...</p>
-                </div>
-              ) : (
-                <p className="text-white/90 whitespace-pre-wrap leading-relaxed">
-                  {interpretation || hexagram.meaning.general}
-                </p>
-              )}
-            </div>
-
-            {/* アクション */}
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setStep('intro');
-                  setQuestion('');
-                  setHexagram(null);
-                }}
-                className="flex-1 py-4 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20"
-              >
-                もう一度占う
-              </button>
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="flex-1 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold rounded-xl hover:from-amber-600 hover:to-orange-600"
-              >
-                ダッシュボードへ
-              </button>
-            </div>
-          </div>
-        )}
+        <UsageLimitModal
+          isOpen={showLimitModal}
+          onClose={() => {
+            setShowLimitModal(false);
+            router.push('/dashboard');
+          }}
+          featureName="易占い"
+        />
       </div>
-
-      {/* 使用制限モーダルを追加 */}
-      <UsageLimitModal
-        isOpen={showLimitModal}
-        onClose={() => setShowLimitModal(false)}
-        featureName="易占い"
-      />
-
-      {/* CSSアニメーション */}
-      <style jsx>{`
-        @keyframes stick-0 {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-10px) rotate(3deg); }
-        }
-        @keyframes stick-1 {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-15px) rotate(-3deg); }
-        }
-        @keyframes stick-2 {
-          0%, 100% { transform: translateY(0) rotate(0deg); }
-          50% { transform: translateY(-12px) rotate(2deg); }
-        }
-      `}</style>
     </div>
   );
 }

@@ -19,6 +19,7 @@ import {
 } from '@/lib/tarot-enhancements';
 import { useAuth } from '@/contexts/AuthContext';
 import UsageLimitModal from '@/components/UsageLimitModal';
+import ShareButton from '@/components/ShareButton';
 
 type TarotCategory = 'general' | 'love' | 'career' | 'money';
 
@@ -35,6 +36,7 @@ export default function TarotPage() {
   const [authReady, setAuthReady] = useState(false);
   const [revealedCards, setRevealedCards] = useState<boolean[]>([false, false, false]);
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [savedReadingId, setSavedReadingId] = useState<string | null>(null);
 
   const categories: Array<{ id: TarotCategory; label: string; icon: any; color: string }> = [
     { id: 'general', label: '総合運', icon: Star, color: 'from-purple-500 to-pink-500' },
@@ -138,30 +140,34 @@ export default function TarotPage() {
 
       const readingData = {
         userId: currentUser.uid,
-        cards: selectedCards.map(card => ({
-          id: card.id,
-          name: card.name,
-          nameJa: card.nameJa,
-          meaning: card.meaning,
-          reversed: card.isReversed || false
-        })),
-        interpretation: interpretation,
-        category: selectedCategory,
-        parameters: parameters, // パラメータを追加
+        readingType: 'tarot',
+        tarotReading: {
+          cards: selectedCards.map(card => ({
+            id: card.id,
+            name: card.name,
+            nameJa: card.nameJa,
+            meaning: card.meaning,
+            reversed: card.isReversed || false
+          })),
+          interpretation: interpretation,
+          category: selectedCategory,
+          parameters: parameters,
+        },
         createdAt: serverTimestamp(),
-        type: 'tarot'
+        updatedAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'readings'), readingData);
-      console.log('✅ Firestore保存成功');
+      const docRef = await addDoc(collection(db, 'readings'), readingData);
+      setSavedReadingId(docRef.id);
+      console.log('✅ Firestore保存成功:', docRef.id);
 
       saveToLocalStorage({
         ...readingData,
+        id: docRef.id,
         createdAt: new Date().toISOString()
       });
 
       alert('占い結果を保存しました！');
-      router.push('/dashboard');
     } catch (error: any) {
       console.error('=== 保存エラー ===', error);
       alert(`保存に失敗しました: ${error?.message || '不明なエラー'}`);
@@ -230,7 +236,7 @@ export default function TarotPage() {
         body: JSON.stringify({
           question: `私の${categories.find(c => c.id === selectedCategory)?.label}を詳しく教えてください`,
           spreadType: 'three-card',
-          userId: user.uid // ← userIdを追加
+          userId: user.uid
         })
       });
 
@@ -709,13 +715,14 @@ ${closing.closing}
               </div>
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-4 mb-8">
               <button
                 onClick={() => {
                   setStep('intro');
                   setSelectedCards([]);
                   setInterpretation('');
                   setRevealedCards([false, false, false]);
+                  setSavedReadingId(null);
                 }}
                 className="px-6 py-3 bg-purple-600 rounded-full font-semibold hover:bg-purple-700 transition flex items-center gap-2"
               >
@@ -732,6 +739,17 @@ ${closing.closing}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+
+            {/* シェアボタン */}
+            {savedReadingId && (
+              <div className="mt-8 flex justify-center">
+                <ShareButton 
+                  type="tarot" 
+                  resultId={savedReadingId}
+                  userId={user?.uid}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
