@@ -141,20 +141,22 @@ export default function TarotPage() {
       const readingData = {
         userId: currentUser.uid,
         readingType: 'tarot',
-        tarotReading: {
-          cards: selectedCards.map(card => ({
-            id: card.id,
-            name: card.name,
-            nameJa: card.nameJa,
-            meaning: card.meaning,
-            reversed: card.isReversed || false
-          })),
-          interpretation: interpretation,
-          category: selectedCategory,
-          parameters: parameters,
-        },
+        
+        // ⭐ トップレベルに移動
+        category: selectedCategory,
+        parameters: parameters,
+        
+        // カード情報もトップレベルに
+        cards: selectedCards.map(card => ({
+          id: card.id,
+          name: card.name,
+          nameJa: card.nameJa,
+          meaning: card.meaning,
+          reversed: card.isReversed || false
+        })),
+        
+        interpretation: interpretation,
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       };
 
       const docRef = await addDoc(collection(db, 'readings'), readingData);
@@ -714,6 +716,67 @@ ${closing.closing}
                 </div>
               </div>
             </div>
+
+            {/* ⭐ ここから追加 ⭐ */}
+            
+            {/* パラメータスコア表示 */}
+            <div className="w-full max-w-4xl bg-white/10 backdrop-blur-xl rounded-3xl p-8 mb-8">
+              <h3 className="text-2xl font-bold text-white mb-6 text-center">
+                🌟 運勢パラメーター
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {Object.entries(calculateParametersFromCards(selectedCards)).map(([key, value]) => (
+                  <div key={key} className="bg-white/10 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium">
+                        {key === 'love' ? '❤️ 恋愛運' : 
+                         key === 'career' ? '💼 仕事運' :
+                         key === 'money' ? '💰 金運' :
+                         key === 'health' ? '🏃 健康運' :
+                         key === 'social' ? '👥 対人運' : '🌱 成長運'}
+                      </span>
+                      <span className="text-yellow-300 font-bold text-xl">{value}</span>
+                    </div>
+                    <div className="w-full bg-white/20 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-yellow-300 to-pink-300 h-2 rounded-full transition-all"
+                        style={{ width: `${value}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 開運ポイント */}
+            <div className="w-full max-w-4xl bg-white/10 backdrop-blur-xl rounded-3xl p-8 mb-8">
+              <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
+                🍀 開運ポイント
+              </h3>
+              <div className="grid grid-cols-2 gap-4 text-white">
+                <div className="bg-white/10 rounded-xl p-4">
+                  <p className="text-sm text-purple-200 mb-1">ラッキーカラー</p>
+                  <p className="text-lg font-bold">{getLuckyColor(selectedCards).color}</p>
+                  <p className="text-xs text-purple-200 mt-1">{getLuckyColor(selectedCards).meaning}</p>
+                </div>
+                <div className="bg-white/10 rounded-xl p-4">
+                  <p className="text-sm text-purple-200 mb-1">ラッキーナンバー</p>
+                  <p className="text-lg font-bold">
+                    {selectedCards.reduce((sum, card) => sum + parseInt(card.id), 0) % 9 + 1}
+                  </p>
+                </div>
+                <div className="bg-white/10 rounded-xl p-4">
+                  <p className="text-sm text-purple-200 mb-1">ラッキーアイテム</p>
+                  <p className="text-lg font-bold">{getLuckyItem(selectedCards)}</p>
+                </div>
+                <div className="bg-white/10 rounded-xl p-4">
+                  <p className="text-sm text-purple-200 mb-1">パワータイム</p>
+                  <p className="text-lg font-bold">{getPowerTime(selectedCards).time}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ⭐ ここまで追加 ⭐ */}
 
             <div className="flex gap-4 mb-8">
               <button
