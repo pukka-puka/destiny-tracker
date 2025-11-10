@@ -2,10 +2,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Loader2, BookOpen, Sparkles, ArrowLeft } from 'lucide-react';
+import ShareButton from '@/components/ShareButton';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface IChingReading {
   question: string;
@@ -22,17 +24,27 @@ interface IChingReading {
   createdAt: any;
 }
 
-export default function IChingResultPage() {
-  const params = useParams();
+export default function IChingResultPage({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [reading, setReading] = useState<IChingReading | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resultId, setResultId] = useState<string | null>(null);
 
+  // params.idを一度だけ取得してstateに保存
   useEffect(() => {
-    if (params.id) {
-      fetchReading(params.id as string);
+    const id = params.id as string;
+    if (id) {
+      setResultId(id);
     }
-  }, [params.id]);
+  }, [params]);
+
+  // resultIdが設定されたら結果を取得
+  useEffect(() => {
+    if (resultId) {
+      fetchReading(resultId);
+    }
+  }, [resultId]);
 
   const fetchReading = async (id: string) => {
     try {
@@ -142,7 +154,7 @@ export default function IChingResultPage() {
           </p>
         </div>
 
-        <div className="flex gap-4">
+        <div className="flex gap-4 mb-8">
           <button
             onClick={() => router.push('/iching')}
             className="flex-1 py-4 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20"
@@ -156,6 +168,17 @@ export default function IChingResultPage() {
             ダッシュボードへ
           </button>
         </div>
+
+        {/* シェアボタンを追加 */}
+        {resultId && (
+          <div className="mt-8 flex justify-center">
+            <ShareButton 
+              type="iching" 
+              resultId={resultId}
+              userId={user?.uid}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

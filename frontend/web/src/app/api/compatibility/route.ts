@@ -51,7 +51,36 @@ function getZodiacSign(birthDate: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { person1, person2, category, userId } = await request.json();
+    const body = await request.json();
+    console.log('📥 受信したリクエストボディ:', JSON.stringify(body, null, 2));
+    
+    // 新しい形式に対応
+    let person1, person2, category, userId;
+    
+    if (body.person1 && body.person2) {
+      // 旧形式
+      ({ person1, person2, category, userId } = body);
+    } else {
+      // 新形式（直接パラメータ）
+      const { birthdate1, birthdate2, name1, name2, userId: uid } = body;
+      person1 = { name: name1, birthDate: birthdate1 };
+      person2 = { name: name2, birthDate: birthdate2 };
+      category = 'love'; // デフォルト
+      userId = uid;
+    }
+    
+    console.log('✅ person1:', person1);
+    console.log('✅ person2:', person2);
+    console.log('✅ category:', category);
+    console.log('✅ userId:', userId);
+
+    // バリデーション
+    if (!person1?.name || !person1?.birthDate || !person2?.name || !person2?.birthDate) {
+      return NextResponse.json({
+        success: false,
+        error: '必要な情報が不足しています'
+      }, { status: 400 });
+    }
 
     // ===== 使用制限チェック & 使用回数記録 =====
     if (userId) {
@@ -118,34 +147,25 @@ export async function POST(request: NextRequest) {
 以下のJSON形式で相性診断の結果を返してください。JSON以外の説明文は一切含めず、純粋なJSON形式のみを返してください：
 
 {
-  "overall": 総合相性スコア(1-100の数値),
-  "love": 恋愛相性スコア(1-100の数値),
-  "friendship": 友情相性スコア(1-100の数値),
-  "work": 仕事相性スコア(1-100の数値),
-  "communication": コミュニケーション相性スコア(1-100の数値),
-  "trust": 信頼関係スコア(1-100の数値),
-  "interpretation": "詳細な解釈（800文字程度）。改行は含めずに一続きの文章として記述。",
-  "strengths": ["強み1", "強み2", "強み3"],
-  "challenges": ["課題1", "課題2", "課題3"],
-  "advice": ["アドバイス1", "アドバイス2", "アドバイス3"]
+  "overallScore": 総合相性スコア(1-100の数値),
+  "interpretation": "詳細な解釈（800文字程度の文章）。数秘術とそれぞれの星座の特徴を踏まえた具体的な相性分析を含めてください。",
+  "advice": "二人の関係をより良くするための具体的なアドバイス（400文字程度）",
+  "strengths": ["この二人の組み合わせの強み1", "強み2", "強み3"],
+  "challenges": ["注意すべき点1", "注意すべき点2", "注意すべき点3"]
 }
 
-【重要な注意事項】
-- interpretationフィールド内では改行文字を使用せず、一続きの文章として記述してください
-- JSON形式として正しく解析可能な形式で出力してください
-- 制御文字（\\n, \\t など）は使用しないでください
-
 【分析のポイント】
-1. 数秘術の観点から相性を分析
-2. 星座の相性を考慮
+1. 数秘術のライフパスナンバーから見た相性
+2. 星座同士の相性と特徴
 3. ${categoryText}における具体的な相性
-4. 二人の関係をより良くするための実践的なアドバイス
+4. 実践的で前向きなアドバイス
+5. 相性スコアは現実的な範囲（40-90点程度）で設定
 
-スコアは現実的な範囲で設定し、解釈は具体的で前向きな内容にしてください。`;
+解釈は具体的で温かみのある内容にし、二人の関係の可能性を前向きに示してください。`;
 
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2000,
+      max_tokens: 2500,
       messages: [{
         role: 'user',
         content: prompt
@@ -179,13 +199,25 @@ export async function POST(request: NextRequest) {
     let result;
     try {
       result = JSON.parse(jsonString);
+      
+      // 結果ページで期待される形式に変換
+      if (result.overallScore && !result.overall) {
+        result.overall = result.overallScore;
+      }
+      
     } catch (parseError) {
       console.error('❌ JSONパースエラー:', parseError);
       console.error('❌ 問題のJSON文字列:', jsonString);
       throw new Error('JSON解析に失敗しました');
     }
 
-    console.log('✅ 相性診断成功');
+    console.log('✅ 相性診断成功:', {
+      overallScore: result.overallScore || result.overall,
+      hasInterpretation: !!result.interpretation,
+      hasAdvice: !!result.advice,
+      strengthsCount: result.strengths?.length || 0,
+      challengesCount: result.challenges?.length || 0
+    });
 
     return NextResponse.json({ 
       success: true,

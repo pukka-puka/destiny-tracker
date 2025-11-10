@@ -7,6 +7,7 @@ import { db, auth } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { Loader2, Heart, Briefcase, DollarSign, Activity, Users, TrendingUp, Sparkles, Download, Star } from 'lucide-react';
 import { PalmReadingData } from '@/types/destiny.types';
+import ShareButton from '@/components/ShareButton';
 
 export default function PalmAnalysisPage() {
   const params = useParams();
@@ -458,7 +459,7 @@ export default function PalmAnalysisPage() {
         )}
 
         {/* アクションボタン */}
-        <div className="flex gap-4 justify-center">
+        <div className="flex gap-4 justify-center mb-8">
           <button
             onClick={() => router.push('/dashboard')}
             className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -472,6 +473,15 @@ export default function PalmAnalysisPage() {
             <Download className="w-4 h-4" />
             保存
           </button>
+        </div>
+
+        {/* シェアボタン */}
+        <div className="mt-8 flex justify-center">
+          <ShareButton 
+            type="palm" 
+            resultId={params.id as string}
+            userId={user?.uid}
+          />
         </div>
       </div>
     </div>
